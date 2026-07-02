@@ -1,0 +1,27 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+/bin/
+/dist/
+
+# Test binaries
+*.test
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Go
+go.sum
+vendor/
+
+# Project-specific
+gst
+.gst/
