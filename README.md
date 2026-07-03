@@ -5,8 +5,7 @@
 `gst` automates provisioning, compilation, and configuration of encrypted Godot export templates—all in an isolated workspace within your project. No manual C++ toolchain setup. No Python dependency hell. No SCons config. Just one command.
 
 ```bash
-$ gst create --godot-version 4.3.2
-✅ Success! Encrypted templates compiled and configured.
+$ gst create
 ```
 
 ## What It Does
