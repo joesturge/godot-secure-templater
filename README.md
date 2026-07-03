@@ -51,8 +51,28 @@ Use one shared project key distributed securely (for example via your secret man
 ### From GitHub Releases (recommended)
 
 1. Open the latest release on GitHub.
-2. Download the Windows executable.
+2. Download the asset for your OS/architecture.
 3. Rename or move it to a location on your PATH.
+
+Release asset names:
+- `gst-windows-amd64.exe`
+- `gst-windows-386.exe`
+- `gst-windows-arm64.exe`
+- `gst-linux-amd64`
+- `gst-linux-386`
+- `gst-linux-arm64`
+- `gst-darwin-amd64`
+- `gst-darwin-arm64`
+
+Which one should I download?
+- Most modern Windows PCs (Intel/AMD 64-bit): `gst-windows-amd64.exe`
+- Older 32-bit Windows PCs: `gst-windows-386.exe`
+- Windows on ARM devices: `gst-windows-arm64.exe`
+- Most modern Linux PCs (Intel/AMD 64-bit): `gst-linux-amd64`
+- Older 32-bit Linux PCs: `gst-linux-386`
+- Linux on ARM64 devices: `gst-linux-arm64`
+- macOS on Apple Silicon (M1/M2/M3): `gst-darwin-arm64`
+- macOS on older Intel Macs: `gst-darwin-amd64`
 
 Windows (PowerShell):
 
