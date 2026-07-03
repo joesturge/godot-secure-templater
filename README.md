@@ -50,7 +50,7 @@ Use one shared project key distributed securely (for example via your secret man
 
 ### From GitHub Releases (recommended)
 
-1. Open the latest release on GitHub.
+1. Open the [latest release on GitHub](https://github.com/joesturge/godot-secure-templater/releases).
 2. Download the asset for your OS/architecture.
 3. Rename or move it to a location on your PATH.
 
