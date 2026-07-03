@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/joemi/godot-secure-templater/internal/cleanup"
 	"github.com/joemi/godot-secure-templater/internal/config"
@@ -177,6 +178,7 @@ func (o *Orchestrator) WriteManifest(
 		Platform:                platform,
 		ToolVersion:             toolVersion,
 		ToolchainChecksums:      toolchainChecksums,
+		Timestamp:               time.Now().UTC(),
 		Success:                 success,
 		TemplateRelease:         templateReleaseHash,
 		TemplateDebug:           templateDebugHash,
@@ -202,7 +204,7 @@ func (o *Orchestrator) CleanupAfterSuccess() error {
 func (o *Orchestrator) GetTeammateMessage() string {
 	return `
 📋 Note for teammates:
-   The encryption key in .godot/export_credentials.cfg is machine-specific.
-   Each team member must run this tool locally on their machine to generate their own key.
-   Do NOT share encryption keys between machines.`
+	Treat the encryption key as a shared project secret.
+	Distribute it securely to team members and CI via a secrets manager.
+	Do not commit key material to source control.`
 }

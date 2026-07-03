@@ -55,7 +55,7 @@ func WindowsComponents(version string) []internal.Artifact {
 }
 
 var pinnedGodotChecksums = map[string]string{
-	"4.6.3": "2cc4be2602184f9287448ecb85b9e5eb591f644e4f8898ea1adfdb6700deaf15",
+	"4.6.3": "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c",
 }
 
 // godotChecksumForVersion returns a checksum for a Godot version.
@@ -215,8 +215,21 @@ func isProvisionedAndValid(targetDir, name string) bool {
 
 	// For godot_source, verify there's a godot-* subdirectory
 	if strings.HasPrefix(name, "godot") {
+		// Support both extracted layouts:
+		// 1) top-level godot-* folder
+		// 2) stripped archive root containing source tree files directly
+		knownRootMarkers := map[string]bool{
+			"SConstruct": true,
+			"version.py": true,
+			"core":      true,
+			"platform":  true,
+		}
+
 		for _, entry := range entries {
 			if entry.IsDir() && strings.HasPrefix(entry.Name(), "godot-") {
+				return true
+			}
+			if knownRootMarkers[entry.Name()] {
 				return true
 			}
 		}

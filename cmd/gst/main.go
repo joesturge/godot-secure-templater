@@ -205,16 +205,30 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	canSkip := false
-	if !flagForceRebuild {
+	if flagForceRebuild {
+		logger.Info("Force rebuild requested; skipping cache check")
+	} else if flagRegenerateKey {
+		logger.Info("Key regeneration requested; skipping cache check")
+	} else {
 		canSkip = orch.CheckIdempotency(resolution, toolchainChecksums, toolVersion)
 		if canSkip {
-			logger.Info("Cache hit! Skipping rebuild.")
+			logger.Info("Cache hit! Skipping rebuild and reapplying project configuration.")
+
+			key, keyErr := crypto.EnsureKey(workspace.KeyFile)
+			if keyErr != nil {
+				logger.Error("EnsureKey failed: %v", keyErr)
+				return keyErr
+			}
+
+			if err := applyProjectConfig(projectRoot, workspace, era, key, logger); err != nil {
+				logger.Error("Config injection failed on cache hit: %v", err)
+				return err
+			}
+
 			logger.Info(orch.GetTeammateMessage())
 			return nil
 		}
 		logger.Info("No matching manifest cache key found; continuing with rebuild")
-	} else {
-		logger.Info("Force rebuild requested; skipping cache check")
 	}
 
 	// ============================================================================
@@ -249,7 +263,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if flagRegenerateKey {
 		if !flagForce {
 			logger.Warn("Regenerating encryption key invalidates prior builds that embedded the old key.")
-			logger.Warn("This key is MACHINE-SPECIFIC; each teammate must regenerate on their machine.")
+			logger.Warn("After regeneration, rotate and redistribute the new shared key to all team and CI environments.")
 			confirmed, confirmErr := confirmRegenerateKey()
 			if confirmErr != nil {
 				return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to read confirmation input.", Details: confirmErr.Error()}
@@ -294,21 +308,8 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	logger.Info("Injecting configuration...")
-
-	presetsPath := filepath.Join(projectRoot, "export_presets.cfg")
-	if err := config.InjectWindowsTemplate(presetsPath,
-		filepath.Join(workspace.Templates, "windows_template_release.exe"),
-		filepath.Join(workspace.Templates, "windows_template_debug.exe")); err != nil {
+	if err := applyProjectConfig(projectRoot, workspace, era, key, logger); err != nil {
 		logger.Error("Config injection failed: %v", err)
-		return err
-	}
-
-	credsPath, credPathErr := config.CredentialPath(projectRoot, era)
-	if credPathErr != nil {
-		return &internal.Error{Code: internal.ExitUnsupportedGodot, Message: "Could not determine credential path for this Godot version.", Details: credPathErr.Error()}
-	}
-	if err := config.InjectEncryptionKey(credsPath, key); err != nil {
-		logger.Error("Credential injection failed: %v", err)
 		return err
 	}
 
@@ -386,9 +387,35 @@ func runClean(cmd *cobra.Command, args []string) error {
 func buildToolchainChecksums(components []internal.Artifact) map[string]string {
 	checksums := make(map[string]string)
 	for _, component := range components {
-		checksums[component.Name] = component.SHA256
+		value := component.SHA256
+		if strings.HasPrefix(value, "placeholder_godot_") {
+			value = ""
+		}
+		checksums[component.Name] = value
 	}
 	return checksums
+}
+
+func applyProjectConfig(projectRoot string, workspace *internal.Workspace, era config.Era, key string, logger internal.Logger) *internal.Error {
+	presetsPath := filepath.Join(projectRoot, "export_presets.cfg")
+	if err := config.InjectWindowsTemplate(
+		presetsPath,
+		filepath.Join(workspace.Templates, "windows_template_release.exe"),
+		filepath.Join(workspace.Templates, "windows_template_debug.exe"),
+	); err != nil {
+		return err
+	}
+
+	credsPath, credPathErr := config.CredentialPath(projectRoot, era)
+	if credPathErr != nil {
+		return &internal.Error{Code: internal.ExitUnsupportedGodot, Message: "Could not determine credential path for this Godot version.", Details: credPathErr.Error()}
+	}
+	if err := config.InjectEncryptionKey(credsPath, key); err != nil {
+		logger.Error("Credential injection failed: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 func confirmRegenerateKey() (bool, error) {

@@ -103,7 +103,7 @@ other_option="value"
 	assert.Contains(t, content, "[preset.0]", "Should preserve section header")
 }
 
-func TestInjectWindowsTemplateWithToolMarker(t *testing.T) {
+func TestInjectWindowsTemplateWritesParseableValues(t *testing.T) {
 	// GIVEN an export_presets.cfg file
 	tmpDir := t.TempDir()
 	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
@@ -116,10 +116,34 @@ func TestInjectWindowsTemplateWithToolMarker(t *testing.T) {
 	// THEN no error should occur
 	assert.Nil(t, err, "InjectWindowsTemplate should not error")
 
-	// AND the tool marker should be present for idempotency
+	// AND injected keys should be plain parseable values without inline comments
 	content, _ := os.ReadFile(presetsPath)
 	contentStr := string(content)
-	assert.Contains(t, contentStr, toolMarker, "Should add tool marker for idempotency")
+	assert.Contains(t, contentStr, "custom_template/release=\"/path/release\"", "Should inject plain release template key-value")
+	assert.Contains(t, contentStr, "custom_template/debug=\"/path/debug\"", "Should inject plain debug template key-value")
+	assert.NotContains(t, contentStr, "# [gst managed]", "Should avoid inline markers that may break Godot parsing")
+}
+
+func TestInjectWindowsTemplateNormalizesPathSeparators(t *testing.T) {
+	// GIVEN an export presets file and Windows-style template paths
+	tmpDir := t.TempDir()
+	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+	writeErr := os.WriteFile(presetsPath, []byte("[preset.0.options]\n"), 0644)
+	assert.NoError(t, writeErr, "Should write export presets fixture")
+
+	releasePath := `C:\Users\joemi\Documents\godot\kings-road\.gst\templates\windows_template_release.exe`
+	debugPath := `C:\Users\joemi\Documents\godot\kings-road\.gst\templates\windows_template_debug.exe`
+
+	// WHEN injecting template paths
+	err := InjectWindowsTemplate(presetsPath, releasePath, debugPath)
+
+	// THEN paths should be written with forward slashes
+	assert.Nil(t, err, "InjectWindowsTemplate should not error")
+	content, readErr := os.ReadFile(presetsPath)
+	assert.NoError(t, readErr, "Should read modified export presets")
+	contentStr := string(content)
+	assert.Contains(t, contentStr, `custom_template/release="C:/Users/joemi/Documents/godot/kings-road/.gst/templates/windows_template_release.exe"`, "Release template path should use forward slashes")
+	assert.Contains(t, contentStr, `custom_template/debug="C:/Users/joemi/Documents/godot/kings-road/.gst/templates/windows_template_debug.exe"`, "Debug template path should use forward slashes")
 }
 
 func TestInjectWindowsTemplateTargetsWindowsPresetSection(t *testing.T) {
@@ -158,6 +182,8 @@ other_option="windows"
 	assert.Contains(t, contentStr, "[preset.1.options]", "Windows options section should remain present")
 	assert.Contains(t, contentStr, "custom_template/release=\"C:/tmp/windows_release.exe\"", "Release template path should be injected into Windows preset")
 	assert.Contains(t, contentStr, "custom_template/debug=\"C:/tmp/windows_debug.exe\"", "Debug template path should be injected into Windows preset")
+	assert.NotContains(t, contentStr, "windows_template_release=", "Legacy release template key should not be written")
+	assert.NotContains(t, contentStr, "windows_template_debug=", "Legacy debug template key should not be written")
 
 	// AND non-Windows options should remain unchanged
 	assert.Contains(t, contentStr, "other_option=\"linux\"", "Non-Windows preset options should be preserved")
@@ -203,6 +229,8 @@ func TestInjectWindowsTemplateMissingOrBlankPresets(t *testing.T) {
 			assert.Contains(t, contentStr, "[preset.0.options]", "Should include a default preset options section when no Windows section exists")
 			assert.Contains(t, contentStr, "custom_template/release=\"C:/tmp/windows_template_release.exe\"", "Should inject release template path")
 			assert.Contains(t, contentStr, "custom_template/debug=\"C:/tmp/windows_template_debug.exe\"", "Should inject debug template path")
+			assert.NotContains(t, contentStr, "windows_template_release=", "Should not inject legacy release template key")
+			assert.NotContains(t, contentStr, "windows_template_debug=", "Should not inject legacy debug template key")
 		})
 	}
 }
@@ -254,6 +282,39 @@ script_encryption_key="old_key_here"
 	assert.NotContains(t, contentStr, "old_key_here", "Should replace old key")
 	// AND the new key should be present
 	assert.Contains(t, contentStr, newKey, "New key should be in file")
+}
+
+func TestInjectEncryptionKeyTargetsPresetSectionWhenPresent(t *testing.T) {
+	// GIVEN export credentials content that contains preset sections
+	tmpDir := t.TempDir()
+	credsPath := filepath.Join(tmpDir, "export_credentials.cfg")
+	initialContent := `[preset.0]
+script_encryption_key=""
+
+[preset.0.options]
+codesign/identity_type=0
+codesign/identity=""
+codesign/password=""
+`
+	writeErr := os.WriteFile(credsPath, []byte(initialContent), 0644)
+	assert.NoError(t, writeErr, "Should write preset-based credentials fixture")
+
+	// WHEN injecting a key
+	newKey := "70b20473a9aa77843dade0d33e770aee04293d4f88d6accc5b1518e7ea577361"
+	err := InjectEncryptionKey(credsPath, newKey)
+
+	// THEN injection should succeed
+	assert.Nil(t, err, "InjectEncryptionKey should not error for preset-based credentials")
+
+	// AND script_encryption_key should be written under preset.0
+	content, readErr := os.ReadFile(credsPath)
+	assert.NoError(t, readErr, "Should read updated credentials file")
+	contentStr := string(content)
+	assert.Contains(t, contentStr, "[preset.0]", "preset.0 section should remain present")
+	assert.Contains(t, contentStr, "script_encryption_key=\""+newKey+"\"", "Key should be injected in preset section")
+
+	// AND no fallback [encryption] section should be appended for this shape
+	assert.NotContains(t, contentStr, "[encryption]", "Should avoid appending [encryption] when preset sections exist")
 }
 
 func TestBackupOncePreservesRestorability(t *testing.T) {

@@ -12,7 +12,7 @@ $ gst create --godot-version 4.3.2
 ## What It Does
 
 ### 🔒 End-to-End Encryption
-- Generates a machine-specific AES-256 encryption key
+- Generates an AES-256 encryption key for your project
 - Compiles Godot templates with `SCRIPT_AES256_ENCRYPTION_KEY` baked in
 - Wires the key into your export settings
 - **Result:** Your game scripts and resources are encrypted in the final binary
@@ -23,14 +23,16 @@ $ gst create --godot-version 4.3.2
 - Cleans up after build (optional `--keep-runtime` for debugging)
 - **Result:** No manual compiler installation ever
 
-### 🚀 One Command Per Team Member
-Each team member runs the tool on their own machine. Each gets their own encryption key.
+### 🚀 One Command to Wire Project Secrets
+Run `gst create` whenever you need to compile templates or re-apply export wiring.
+
+Use one shared project key distributed securely (for example via your secret manager or CI).
 
 ```
 📋 Note for teammates:
-   The encryption key in .godot/export_credentials.cfg is machine-specific.
-   Each team member must run this tool locally on their machine.
-   Do NOT share encryption keys between machines.
+  Treat the encryption key as a project secret.
+  Share it securely via team secret management or CI secret injection.
+  Do not commit secret material to source control.
 ```
 
 ### 🔄 Smart Rebuilds
@@ -46,36 +48,32 @@ Each team member runs the tool on their own machine. Each gets their own encrypt
 
 ## Installation
 
+### From GitHub Releases (recommended)
+
+1. Open the latest release on GitHub.
+2. Download the Windows executable.
+3. Rename or move it to a location on your PATH.
+
+Windows (PowerShell):
+
+```powershell
+# Example for v0.1.0 (update version as needed)
+$version = "v0.1.0"
+$url = "https://github.com/joesturge/godot-secure-templater/releases/download/$version/gst-windows-amd64.exe"
+Invoke-WebRequest -Uri $url -OutFile gst.exe
+```
+
 ### From Source
 
 ```bash
-git clone https://github.com/joemi/godot-secure-templater.git
+git clone https://github.com/joesturge/godot-secure-templater.git
 cd godot-secure-templater
 mkdir -p dist
 go build -o dist/gst ./cmd/gst
 sudo mv dist/gst /usr/local/bin/  # or add to PATH
 ```
 
-### Cross-Compilation
-
-Compile for different platforms using environment variables:
-
-```bash
-# Windows (64-bit)
-mkdir -p dist
-GOOS=windows GOARCH=amd64 go build -o dist/gst.exe ./cmd/gst
-
-# Linux (64-bit)
-GOOS=linux GOARCH=amd64 go build -o dist/gst ./cmd/gst
-
-# macOS (Intel)
-GOOS=darwin GOARCH=amd64 go build -o dist/gst ./cmd/gst
-
-# macOS (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o dist/gst ./cmd/gst
-```
-
-The resulting binary runs on any machine with that OS/architecture—no additional dependencies needed.
+For contributor and release build commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Requires
 - Go 1.21+
@@ -90,19 +88,26 @@ The resulting binary runs on any machine with that OS/architecture—no addition
 
 ## Quick Start
 
-### 1. Prepare Your Godot Project
+### 1. Open your project and create an export preset in Godot
+
+1. Open your project in Godot Editor.
+2. Go to **Project → Export**.
+3. Create or select a **Windows Desktop** preset.
+4. Save and close the export dialogue.
+
+This creates/updates `export_presets.cfg`, which `gst` will wire automatically.
+
+### 2. Run gst to populate templates and encryption key
 
 ```bash
 cd /path/to/your/game
-```
-
-Ensure your project has a `project.godot` file
-
-### 2. Run gst
-
-```bash
 gst create
 ```
+
+`gst` will:
+- compile (or cache-hit) encrypted Windows templates
+- populate custom template paths in `export_presets.cfg`
+- write your project encryption key to `.godot/export_credentials.cfg` (Godot 4.3+)
 
 **Flags:**
 - `--godot-version VERSION` (required) — Godot version to compile (must match project)
@@ -112,13 +117,12 @@ gst create
 - `--regenerate-key` — Generate a new encryption key (requires confirmation)
 - `--force` — Skip all confirmations (CI/automation mode)
 
-### 3. Export Your Game
+### 3. Export your game
 
-1. Open your project in Godot Editor
-2. Go to **Project → Export**
-3. Select the **Windows Desktop** preset
-4. Click **Export Project**
-5. Your game is now compiled with encrypted scripts!
+1. Open **Project → Export** again.
+2. Confirm the **Windows Desktop** preset is selected.
+3. Export the project.
+4. Your build uses the injected custom templates and encryption key.
 
 ---
 
@@ -131,7 +135,7 @@ my-game/
 ├── .gst/                          # Isolated workspace (add to .gitignore)
 │   ├── runtime/                   # Toolchain (Python, MinGW, SCons, Godot source)
 │   ├── templates/                 # Compiled export templates (windows_release.exe, etc.)
-│   ├── encryption.key             # Your machine's encryption key (owner-read-only)
+│   ├── encryption.key             # Project encryption key (owner-read-only)
 │   └── manifest.json              # Build metadata for caching
 ├── .godot/
 │   └── export_credentials.cfg     # Where the encryption key is wired
@@ -139,30 +143,54 @@ my-game/
 └── project.godot                  # Your project (unchanged)
 ```
 
-**Important:** Add `.gst/` to your `.gitignore`—it's generated locally per team member.
+**Important:** Add `.gst/` to your `.gitignore`—it is generated locally and should not be committed.
 
 ```bash
 echo ".gst/" >> .gitignore
 ```
 
-The encryption key (`encryption.key`) is **machine-specific** and **owner-read-only** (permissions `0600`).
+The encryption key (`encryption.key`) is **owner-read-only** (permissions `0600`) and should be treated as a project secret.
 
 ---
 
 ## Workflow for Teams
 
-### First-Time Setup (Each Team Member)
+### Shared Key Setup
+
+1. Generate and store a single project key in your team's secret manager.
+2. Ensure each development environment and CI job receives that same key securely.
+3. Run `gst create` to compile templates and wire export settings using the shared key.
+
+### Import the shared key on another developer machine
+
+1. Retrieve the project key from your team's secret manager.
+2. Write it to `.gst/encryption.key` in the game project root.
+3. Run `gst create` (without `--regenerate-key`).
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force .gst | Out-Null
+Set-Content -Path .gst/encryption.key -Value $env:GST_ENCRYPTION_KEY -NoNewline
+./gst.exe create --verbose
+```
+
+Linux/macOS:
 
 ```bash
-# Developer A
-$ gst create --godot-version 4.3.2
-✅ Success! Templates compiled with Developer A's key.
-
-# Developer B (different machine)
-$ gst create --godot-version 4.3.2
-✅ Success! Templates compiled with Developer B's key.
-# Developer B's .gst/encryption.key is different from Developer A's.
+mkdir -p .gst
+printf '%s' "$GST_ENCRYPTION_KEY" > .gst/encryption.key
+gst create --verbose
 ```
+
+Notes:
+- Keep the key byte-for-byte identical across dev and CI.
+- Avoid trailing newline changes when writing the file.
+- Never commit `.gst/encryption.key`.
+
+### CI usage
+
+In CI, inject the same project key from your secret store and write `.gst/encryption.key` before running `gst create`.
 
 ### Repeated Builds
 
@@ -178,7 +206,7 @@ $ gst create --godot-version 4.3.2
 $ gst create --godot-version 4.3.2 --regenerate-key
 ⚠️  Regenerating encryption key invalidates prior builds.
     Proceed? (y/n): y
-✅ New key generated. Prior builds are no longer decryptable with this key.
+✅ New key generated. Rotate and redistribute the new key securely before the next team/CI export.
 ```
 
 ---
@@ -231,7 +259,7 @@ The key file has restrictive permissions (`0600`—owner-read-only). Ensure you'
 - **Build artefacts:** Automatically cleaned up (`.gst/runtime/` removed after build)
 - **Manifest:** Records version, platform, and method (for audit trail in Slice 2+)
 
-**Keys are never shared, never transmitted, never stored in version control.**
+**Keys must be shared only through secure secret-management channels, never via source control.**
 
 ---
 

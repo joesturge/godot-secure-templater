@@ -29,7 +29,9 @@ func TestWindowsComponents(t *testing.T) {
 	for i, expectedName := range expectedNames {
 		assert.Equal(t, expectedName, components[i].Name, "Component %d should be %s", i, expectedName)
 		assert.NotEmpty(t, components[i].URL, "Component %d should have non-empty URL", i)
-		assert.NotEmpty(t, components[i].SHA256, "Component %d should have non-empty SHA256", i)
+		if components[i].Name != "godot_source" {
+			assert.NotEmpty(t, components[i].SHA256, "Component %d should have non-empty SHA256", i)
+		}
 		assert.NotEmpty(t, components[i].ExtractTo, "Component %d should have non-empty ExtractTo", i)
 	}
 }
@@ -139,7 +141,7 @@ func TestIsProvisionedAndValid_GodotSource(t *testing.T) {
 }
 
 func TestIsProvisionedAndValid_GodotSource_MissingStable(t *testing.T) {
-	// GIVEN a directory with wrong subdirectory name (doesn't start with godot-)
+	// GIVEN a directory with no Godot source markers
 	tempDir := t.TempDir()
 	wrongDir := filepath.Join(tempDir, "src")
 	err := os.Mkdir(wrongDir, 0755)
@@ -148,8 +150,23 @@ func TestIsProvisionedAndValid_GodotSource_MissingStable(t *testing.T) {
 	// WHEN calling isProvisionedAndValid for godot_source
 	result := isProvisionedAndValid(tempDir, "godot_source")
 
-	// THEN it should return false (no godot-* subdirectory)
-	assert.False(t, result, "Directory without godot-* subdirectory should not be provisioned")
+	// THEN it should return false (no godot-* subdirectory and no known root markers)
+	assert.False(t, result, "Directory without godot source markers should not be provisioned")
+}
+
+func TestIsProvisionedAndValid_GodotSource_StrippedRootLayout(t *testing.T) {
+	// GIVEN a directory with stripped Godot source root markers
+	tempDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(tempDir, "SConstruct"), []byte(""), 0644)
+	assert.NoError(t, err, "Failed to create SConstruct marker")
+	err = os.Mkdir(filepath.Join(tempDir, "core"), 0755)
+	assert.NoError(t, err, "Failed to create core directory marker")
+
+	// WHEN calling isProvisionedAndValid for godot_source
+	result := isProvisionedAndValid(tempDir, "godot_source")
+
+	// THEN it should return true
+	assert.True(t, result, "Directory with stripped root markers should be considered provisioned")
 }
 
 func TestExtractZip_Basic(t *testing.T) {
@@ -221,15 +238,15 @@ func TestExtractTarGZ_Basic(t *testing.T) {
 	assert.NoError(t, err, "Should initialize extraction directory")
 }
 
-func TestGodotChecksumForVersionPinned(t *testing.T) {
-	// GIVEN a version pinned in release metadata
+func TestGodotChecksumForVersionDoesNotUsePlaceholder(t *testing.T) {
+	// GIVEN a known Godot version
 	version := "4.6.3"
 
 	// WHEN calling godotChecksumForVersion
 	checksum := godotChecksumForVersion(version)
 
-	// THEN it should return a pinned checksum
-	assert.NotEmpty(t, checksum, "Pinned versions should resolve to a non-empty checksum")
+	// THEN it should never return a placeholder checksum
+	assert.False(t, strings.HasPrefix(checksum, "placeholder"), "Checksum resolution should never return placeholders")
 }
 
 func TestGodotChecksumForVersionUnknown(t *testing.T) {

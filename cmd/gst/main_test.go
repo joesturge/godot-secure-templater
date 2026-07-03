@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/joemi/godot-secure-templater/internal"
+	"github.com/joemi/godot-secure-templater/internal/config"
 )
 
 func TestRootCommand_CreateValidationErrors(t *testing.T) {
@@ -192,6 +193,7 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	components := []internal.Artifact{
 		{Name: "python", SHA256: "abc"},
 		{Name: "mingw", SHA256: "def"},
+		{Name: "godot_source", SHA256: "placeholder_godot_4.6.3"},
 	}
 
 	// WHEN building the checksum map
@@ -200,5 +202,39 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	// THEN all component checksums should be indexed by component name
 	assert.Equal(t, "abc", checksums["python"], "Python checksum should be preserved in map")
 	assert.Equal(t, "def", checksums["mingw"], "MinGW checksum should be preserved in map")
-	assert.Len(t, checksums, 2, "Checksum map should include all components")
+	assert.Equal(t, "", checksums["godot_source"], "Legacy placeholder checksums should be normalized to empty for cache compatibility")
+	assert.Len(t, checksums, 3, "Checksum map should include all components")
+}
+
+func TestApplyProjectConfigWritesPresetsAndCredentials(t *testing.T) {
+	// GIVEN a project root and workspace with template paths
+	tmpDir := t.TempDir()
+	workspace := &internal.Workspace{
+		Templates: filepath.Join(tmpDir, ".gst", "templates"),
+	}
+	err := os.MkdirAll(workspace.Templates, 0755)
+	assert.NoError(t, err, "Should create templates directory")
+
+	key := "abcdef0123456789"
+	logger := internal.NewSimpleLogger(false)
+
+	// WHEN applying project configuration
+	applyErr := applyProjectConfig(tmpDir, workspace, config.Era43Plus, key, logger)
+
+	// THEN no error should occur
+	assert.Nil(t, applyErr, "applyProjectConfig should succeed")
+
+	// AND export_presets.cfg should include injected template paths
+	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+	presetsData, readPresetsErr := os.ReadFile(presetsPath)
+	assert.NoError(t, readPresetsErr, "export_presets.cfg should be created")
+	presets := string(presetsData)
+	assert.Contains(t, presets, "custom_template/release=", "release template key should be injected")
+	assert.Contains(t, presets, "custom_template/debug=", "debug template key should be injected")
+
+	// AND .godot/export_credentials.cfg should include encryption key
+	credsPath := filepath.Join(tmpDir, ".godot", "export_credentials.cfg")
+	credsData, readCredsErr := os.ReadFile(credsPath)
+	assert.NoError(t, readCredsErr, "export credentials should be created")
+	assert.Contains(t, string(credsData), key, "encryption key should be injected into credentials")
 }

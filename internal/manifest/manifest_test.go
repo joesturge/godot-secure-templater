@@ -231,6 +231,38 @@ func TestCacheKeyEquals(t *testing.T) {
 			key2:   nil,
 			wantEq: false,
 		},
+		{
+			name: "legacy placeholder godot checksum equals empty checksum",
+			key1: &CacheKey{
+				GodotVersion:       "4.6.3",
+				Platform:           "windows",
+				ToolVersion:        "dev",
+				ToolchainChecksums: map[string]string{"godot_source": "placeholder_godot_4.6.3", "python": "abc"},
+			},
+			key2: &CacheKey{
+				GodotVersion:       "4.6.3",
+				Platform:           "windows",
+				ToolVersion:        "dev",
+				ToolchainChecksums: map[string]string{"godot_source": "", "python": "abc"},
+			},
+			wantEq: true,
+		},
+		{
+			name: "godot source hash equals empty checksum",
+			key1: &CacheKey{
+				GodotVersion:       "4.6.3",
+				Platform:           "windows",
+				ToolVersion:        "dev",
+				ToolchainChecksums: map[string]string{"godot_source": "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c", "python": "abc"},
+			},
+			key2: &CacheKey{
+				GodotVersion:       "4.6.3",
+				Platform:           "windows",
+				ToolVersion:        "dev",
+				ToolchainChecksums: map[string]string{"godot_source": "", "python": "abc"},
+			},
+			wantEq: true,
+		},
 	}
 
 	for _, tt := range tests {
