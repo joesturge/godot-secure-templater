@@ -197,7 +197,8 @@ func TestEnsureGitignore(t *testing.T) {
 			gitignorePath := filepath.Join(tmpDir, ".gitignore")
 
 			if tt.initialContent != "" {
-				os.WriteFile(gitignorePath, []byte(tt.initialContent), 0644)
+				writeErr := os.WriteFile(gitignorePath, []byte(tt.initialContent), 0644)
+				assert.NoError(t, writeErr, "Should write the initial .gitignore content")
 			}
 
 			// WHEN ensuring .gitignore exists

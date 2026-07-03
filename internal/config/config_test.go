@@ -14,7 +14,8 @@ func TestBackupOnceCreatesBackup(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "test.cfg")
 	bakPath := filePath + ".bak"
 	originalContent := "original content"
-	os.WriteFile(filePath, []byte(originalContent), 0644)
+	writeErr := os.WriteFile(filePath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the source file before creating a backup")
 
 	// WHEN creating a backup for the first time
 	err := BackupOnce(filePath)
@@ -36,11 +37,14 @@ func TestBackupOnceDoesNotOverwrite(t *testing.T) {
 	bakPath := filePath + ".bak"
 	originalContent := "original"
 	modifiedContent := "modified"
-	os.WriteFile(filePath, []byte(originalContent), 0644)
-	os.WriteFile(bakPath, []byte(originalContent), 0644)
+	writeErr := os.WriteFile(filePath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the original file before creating a backup")
+	writeErr = os.WriteFile(bakPath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should seed the pristine backup file")
 
 	// AND the original file has been modified
-	os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	writeErr = os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	assert.NoError(t, writeErr, "Should modify the source file after creating a backup")
 
 	// WHEN creating a backup again
 	err := BackupOnce(filePath)
@@ -70,7 +74,8 @@ other_option="value"
 
 	tmpDir := t.TempDir()
 	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
-	os.WriteFile(presetsPath, []byte(originalContent), 0644)
+	writeErr := os.WriteFile(presetsPath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the export presets fixture")
 
 	// WHEN injecting template paths
 	releasePath := "/path/to/release.exe"
@@ -102,7 +107,8 @@ func TestInjectWindowsTemplateWithToolMarker(t *testing.T) {
 	// GIVEN an export_presets.cfg file
 	tmpDir := t.TempDir()
 	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
-	os.WriteFile(presetsPath, []byte("[preset.0.options]\n"), 0644)
+	writeErr := os.WriteFile(presetsPath, []byte("[preset.0.options]\n"), 0644)
+	assert.NoError(t, writeErr, "Should write the export presets fixture")
 
 	// WHEN injecting template paths
 	err := InjectWindowsTemplate(presetsPath, "/path/release", "/path/debug")
@@ -145,7 +151,8 @@ func TestInjectEncryptionKeyUpdateExisting(t *testing.T) {
 	initialContent := `[encryption]
 script_encryption_key="old_key_here"
 `
-	os.WriteFile(credsPath, []byte(initialContent), 0644)
+	writeErr := os.WriteFile(credsPath, []byte(initialContent), 0644)
+	assert.NoError(t, writeErr, "Should write the existing credentials fixture")
 
 	// WHEN injecting a new encryption key
 	newKey := "new_key_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0"
@@ -237,7 +244,8 @@ func TestRollbackMultipleFiles(t *testing.T) {
 
 	// AND the files are modified
 	for _, file := range files {
-		os.WriteFile(file, []byte("modified content"), 0644)
+		writeErr := os.WriteFile(file, []byte("modified content"), 0644)
+		assert.NoError(t, writeErr, "Should write the modified file content before rollback")
 	}
 
 	// WHEN rolling back all files

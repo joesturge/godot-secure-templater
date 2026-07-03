@@ -535,7 +535,9 @@ func VerifyChecksum(filePath, expectedSHA256 string) *internal.Error {
 			Details: err.Error(),
 		}
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, file); err != nil {
@@ -558,7 +560,7 @@ func VerifyChecksum(filePath, expectedSHA256 string) *internal.Error {
 // This ensures that python -m SCons works correctly.
 func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *internal.Error {
 	pythonExe := filepath.Join(ctx.Workspace.Runtime, "python", "python.exe")
-	
+
 	// On non-Windows, try without .exe
 	if _, err := os.Stat(pythonExe); err != nil {
 		pythonExe = filepath.Join(ctx.Workspace.Runtime, "python", "python")
@@ -576,7 +578,7 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 	// Run setup.py install from sconsDir
 	cmd := exec.Command(pythonExe, "setup.py", "install")
 	cmd.Dir = sconsDir
-	
+
 	// Capture output
 	output, err := cmd.CombinedOutput()
 	if err != nil {

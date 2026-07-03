@@ -160,14 +160,8 @@ func TestExtractZip_Basic(t *testing.T) {
 	// Create a test ZIP file with some content
 	zipFile, err := os.Create(zipPath)
 	assert.NoError(t, err, "Failed to create zip file")
-	defer func() {
-		assert.NoError(t, zipFile.Close(), "Zip file should close cleanly")
-	}()
 
 	zw := zip.NewWriter(zipFile)
-	defer func() {
-		assert.NoError(t, zw.Close(), "Zip writer should close cleanly")
-	}()
 
 	// Add a test file to the ZIP
 	w, err := zw.Create("test.txt")
@@ -288,7 +282,7 @@ func TestInstallSconsToEmbeddedPython_DirectoryNotFound(t *testing.T) {
 func TestInstallSconsToEmbeddedPython_NoSetupPy(t *testing.T) {
 	// GIVEN a RunContext with workspace setup and a SCons directory without setup.py
 	tempDir := t.TempDir()
-	
+
 	pythonDir := filepath.Join(tempDir, "python")
 	err := os.Mkdir(pythonDir, 0755)
 	assert.NoError(t, err, "Failed to create python directory")

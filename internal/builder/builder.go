@@ -48,7 +48,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 	// - bin/scons or scripts/scons (prebuilt)
 	sconsBase := filepath.Join(ctx.Workspace.Runtime, "scons")
 	sconsExe := ""
-	
+
 	// Build search paths in priority order
 	searchPaths := []string{
 		// First: look for scons.py (standalone script)
@@ -64,7 +64,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 		filepath.Join(sconsBase, "scripts", "scons"),
 		filepath.Join(sconsBase, "scripts", "scons.bat"),
 	}
-	
+
 	// Check for scons-X.Y.Z/ subdirectories (from tar.gz)
 	if entries, err := os.ReadDir(sconsBase); err == nil {
 		for _, entry := range entries {
@@ -76,7 +76,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 			}
 		}
 	}
-	
+
 	// Search in priority order and use first found
 	for _, candidate := range searchPaths {
 		if _, err := os.Stat(candidate); err == nil {
@@ -87,7 +87,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 			break
 		}
 	}
-	
+
 	// Last resort: use python -m SCons (may not work with embedded Python)
 	if sconsExe == "" {
 		sconsExe = "python_module_scons" // Special marker for python -m SCons
@@ -141,7 +141,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 
 	// Build SCons command using full path to Python
 	pythonExe := filepath.Join(ctx.Workspace.Runtime, "python", "python.exe")
-	
+
 	// On non-Windows, try without .exe
 	if _, err := os.Stat(pythonExe); err != nil {
 		pythonExe = filepath.Join(ctx.Workspace.Runtime, "python", "python")
@@ -176,7 +176,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 		cmd = exec.Command(pythonExe, append([]string{"-m", "SCons"}, sconsArgs...)...)
 	} else if strings.HasSuffix(sconsExe, "__main__.py") {
 		// For __main__.py, inject sys.path to find SCons module
-		sconsModuleDir := filepath.Dir(sconsExe)     // .../scons/scons
+		sconsModuleDir := filepath.Dir(sconsExe)        // .../scons/scons
 		sconsRuntimeDir := filepath.Dir(sconsModuleDir) // .../scons
 		pythonCode := fmt.Sprintf(
 			"import sys; sys.path.insert(0, %q); exec(open(%q).read())",
@@ -336,7 +336,7 @@ func moveTemplate(ctx *internal.RunContext, godotSrc string, target BuildTarget)
 	// godot.windows.template_release.x86_64.exe (main executable)
 	// godot.windows.template_release.x86_64.console.exe (console variant)
 	// We use the main executable (non-console variant)
-	
+
 	targetName := "template_release"
 	if target == BuildDebug {
 		targetName = "template_debug"
@@ -436,7 +436,7 @@ func BuildEnv(ctx *internal.RunContext, key string) map[string]string {
 
 	// For embedded Python, don't set PYTHONHOME as it can restrict module search paths
 	// Instead, rely on PYTHONPATH to find our modules
-	
+
 	// PYTHONPATH must include scons directory so Python can find the SCons module
 	// Embedded Python should already have its stdlib, we just need to add our modules
 	pythonPaths := []string{
