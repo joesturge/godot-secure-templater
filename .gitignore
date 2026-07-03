@@ -19,7 +19,6 @@
 *~
 
 # Go
-go.sum
 vendor/
 
 # Project-specific
