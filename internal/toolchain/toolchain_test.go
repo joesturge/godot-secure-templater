@@ -221,20 +221,26 @@ func TestExtractTarGZ_Basic(t *testing.T) {
 	assert.NoError(t, err, "Should initialize extraction directory")
 }
 
-func TestGodotChecksumForVersion_Placeholder(t *testing.T) {
-	// GIVEN a version string
+func TestGodotChecksumForVersionPinned(t *testing.T) {
+	// GIVEN a version pinned in release metadata
 	version := "4.6.3"
 
 	// WHEN calling godotChecksumForVersion
 	checksum := godotChecksumForVersion(version)
 
-	// THEN it should return either a valid checksum or placeholder
-	assert.NotEmpty(t, checksum, "Should return non-empty checksum or placeholder")
+	// THEN it should return a pinned checksum
+	assert.NotEmpty(t, checksum, "Pinned versions should resolve to a non-empty checksum")
+}
 
-	// AND if it's a placeholder, it should follow the pattern
-	if strings.HasPrefix(checksum, "placeholder") {
-		assert.True(t, strings.Contains(checksum, version), "Placeholder should contain version")
-	}
+func TestGodotChecksumForVersionUnknown(t *testing.T) {
+	// GIVEN a clearly non-existent Godot version
+	version := "9.9.9"
+
+	// WHEN calling godotChecksumForVersion
+	checksum := godotChecksumForVersion(version)
+
+	// THEN it should not return a placeholder checksum
+	assert.False(t, strings.HasPrefix(checksum, "placeholder"), "Unknown versions should never use placeholder checksums")
 }
 
 func TestDownloadFile_NotFound(t *testing.T) {

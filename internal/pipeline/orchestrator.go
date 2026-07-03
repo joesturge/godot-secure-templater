@@ -18,6 +18,9 @@ type Options struct {
 	// GodotVersion is the explicit Godot version (if supplied)
 	GodotVersion string
 
+	// GodotEditorPath points to a specific editor binary for local version detection.
+	GodotEditorPath string
+
 	// ProjectMinor is the project's declared minor line (e.g., "4.3")
 	ProjectMinor string
 
@@ -116,7 +119,7 @@ func (o *Orchestrator) ResolveVersion() (*version.Resolution, error) {
 	// Create resolver with strategy chain (priority order)
 	resolver := version.NewResolver(
 		&version.ExplicitStrategy{Version: o.opts.GodotVersion},
-		&version.LocalEditorStrategy{},
+		&version.LocalEditorStrategy{EditorPath: o.opts.GodotEditorPath},
 		&version.GitHubAPIStrategy{MinorVersion: o.opts.ProjectMinor},
 		&version.InteractiveStrategy{},
 	)

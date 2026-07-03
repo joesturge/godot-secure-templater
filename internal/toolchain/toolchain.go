@@ -1,9 +1,9 @@
 package toolchain
 
 import (
+	"bufio"
 	"archive/tar"
 	"archive/zip"
-	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -47,52 +47,49 @@ func WindowsComponents(version string) []internal.Artifact {
 		{
 			Name:      "godot_source",
 			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s-stable.tar.gz", version),
-			SHA256:    godotChecksumForVersion(version), // Version-keyed checksums
+			SHA256:    godotChecksumForVersion(version),
 			ExtractTo: "godot_source",
 			Kind:      internal.ArchiveTarGZ,
 		},
 	}
 }
 
-// godotChecksumForVersion returns the checksum for a Godot version.
-// It fetches from GitHub releases; if unavailable, returns a placeholder (checksum verification skipped).
-func godotChecksumForVersion(version string) string {
-	// Try to fetch from GitHub; if unavailable, skip verification
-	checksum := fetchGodotChecksumFromGitHub(version)
-	if checksum != "" {
-		return checksum
-	}
-
-	// Placeholder for unknown/unreachable versions (will skip checksum verification)
-	return "placeholder_godot_" + version
+var pinnedGodotChecksums = map[string]string{
+	"4.6.3": "2cc4be2602184f9287448ecb85b9e5eb591f644e4f8898ea1adfdb6700deaf15",
 }
 
-// fetchGodotChecksumFromGitHub attempts to fetch the checksum from the official GitHub release.
-// It looks for SHA256-checksums.txt in the release assets.
+// godotChecksumForVersion returns a checksum for a Godot version.
+// It prefers pinned values and falls back to official release checksum metadata when available.
+func godotChecksumForVersion(version string) string {
+	if pinned, ok := pinnedGodotChecksums[version]; ok {
+		return pinned
+	}
+
+	return fetchGodotChecksumFromGitHub(version)
+}
+
+// fetchGodotChecksumFromGitHub tries to read SHA256-checksums.txt from the official release.
+// If unavailable, it returns empty string.
 func fetchGodotChecksumFromGitHub(version string) string {
-	// URL to the checksums file on GitHub releases
 	checksumsURL := fmt.Sprintf(
 		"https://github.com/godotengine/godot/releases/download/%s-stable/SHA256-checksums.txt",
 		version,
 	)
 
 	resp, err := http.Get(checksumsURL)
-	if err != nil || resp.StatusCode != 200 {
-		// Silently fail; will fall back to hardcoded value
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
+	if err != nil {
 		return ""
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	// Parse the checksums file
-	// Format: "sha256 filename" or "sha256  filename"
-	scanner := bufio.NewScanner(resp.Body)
-	targetFileAlt := fmt.Sprintf("godot-%s-stable.tar.gz", version)
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
 
+	targetName := fmt.Sprintf("godot-%s-stable.tar.gz", version)
+	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -104,13 +101,9 @@ func fetchGodotChecksumFromGitHub(version string) string {
 			continue
 		}
 
-		checksum := parts[0]
-		filename := parts[len(parts)-1] // Last field is usually the filename
-
-		// Match against common Godot source archive names
-		if strings.Contains(filename, targetFileAlt) ||
-			strings.HasSuffix(filename, ".tar.gz") && strings.Contains(filename, version) {
-			return checksum
+		filename := parts[len(parts)-1]
+		if filename == targetName {
+			return parts[0]
 		}
 	}
 
@@ -162,14 +155,24 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 			_ = os.Remove(path)
 		}(archivePath)
 
-		// Verify checksum (skip if placeholder)
-		if !strings.HasSuffix(art.SHA256, "5c5d") && art.SHA256 != "" && !strings.HasPrefix(art.SHA256, "placeholder") {
+		if art.SHA256 == "" {
+			if art.Name != "godot_source" {
+				return &internal.Error{
+					Code:    internal.ExitChecksumMismatch,
+					Message: fmt.Sprintf("No checksum available for %s", art.Name),
+					Details: "Provisioning requires checksum metadata for pinned toolchain artifacts.",
+				}
+			}
+
+			ctx.Logger.Warn(
+				"No checksum metadata found for Godot %s source archive; continuing for compatibility",
+				ctx.Godot.Patch,
+			)
+		} else {
 			ctx.Logger.Debug("Verifying checksum for %s", art.Name)
 			if err := VerifyChecksum(archivePath, art.SHA256); err != nil {
 				return err
 			}
-		} else {
-			ctx.Logger.Warn("Skipping checksum verification for %s (placeholder)", art.Name)
 		}
 
 		// Extract archive

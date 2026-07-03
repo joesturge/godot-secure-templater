@@ -52,6 +52,7 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 
 	// WHEN inspecting the command metadata
 	flag := createCmd.Flag("godot-version")
+	editorPathFlag := createCmd.Flag("godot-editor-path")
 
 	// THEN the create subcommand should be discoverable
 	assert.NoError(t, err, "create subcommand should be registered on root command")
@@ -60,6 +61,19 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 	// AND the godot-version flag should be present and optional (slice 1 resolver fallback)
 	assert.NotNil(t, flag, "create command should define the godot-version flag")
 	assert.NotContains(t, flag.Annotations, "cobra_annotation_bash_completion_one_required_flag", "godot-version should not be required in slice 1")
+
+	// AND the create command should expose editor path override for local-editor strategy
+	assert.NotNil(t, editorPathFlag, "create command should define the godot-editor-path flag")
+}
+
+func TestRootCommand_HasCleanSubcommand(t *testing.T) {
+	// GIVEN the root command from package initialisation
+	cmd, _, err := rootCmd.Find([]string{"clean"})
+
+	// WHEN resolving subcommand metadata
+	// THEN the clean subcommand should be discoverable
+	assert.NoError(t, err, "clean subcommand should be registered on root command")
+	assert.Equal(t, "clean", cmd.Name(), "Resolved command should be clean")
 }
 
 func TestRunCreate_ReturnsNotGodotProjectError(t *testing.T) {
@@ -90,6 +104,29 @@ func TestRunCreate_ReturnsNotGodotProjectError(t *testing.T) {
 	assert.ErrorAs(t, err, &toolErr, "runCreate should return the tool's typed error type")
 	assert.Equal(t, internal.ExitNotGodotProject, toolErr.Code, "Error code should indicate non-Godot project context")
 	assert.Contains(t, toolErr.Message, "project.godot", "Error message should tell user what file is missing")
+}
+
+func TestRunClean_ReturnsNotGodotProjectError(t *testing.T) {
+	// GIVEN an empty temporary directory that is not a Godot project
+	tmp := t.TempDir()
+	oldWD, wdErr := os.Getwd()
+	assert.NoError(t, wdErr, "Current working directory should be readable for test setup")
+
+	chdirErr := os.Chdir(tmp)
+	assert.NoError(t, chdirErr, "Changing to temporary test directory should succeed")
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+	})
+
+	// WHEN running clean directly
+	err := runClean(cleanCmd, nil)
+
+	// THEN a typed not-godot-project error should be returned
+	assert.Error(t, err, "runClean should fail when project.godot is missing")
+
+	var toolErr *internal.Error
+	assert.ErrorAs(t, err, &toolErr, "runClean should return the tool's typed error type")
+	assert.Equal(t, internal.ExitNotGodotProject, toolErr.Code, "Error code should indicate non-Godot project context")
 }
 
 func TestAcquireRunLock(t *testing.T) {

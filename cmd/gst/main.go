@@ -11,6 +11,7 @@ import (
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/builder"
+	"github.com/joemi/godot-secure-templater/internal/cleanup"
 	"github.com/joemi/godot-secure-templater/internal/config"
 	"github.com/joemi/godot-secure-templater/internal/crypto"
 	"github.com/joemi/godot-secure-templater/internal/manifest"
@@ -40,8 +41,16 @@ export configuration. Requires --godot-version in Slice 0.`,
 		RunE: runCreate,
 	}
 
+	cleanCmd = &cobra.Command{
+		Use:   "clean",
+		Short: "Remove .gst workspace artifacts",
+		Long:  "Remove the generated .gst workspace, including runtime, templates, and key material.",
+		RunE:  runClean,
+	}
+
 	// Flags.
 	flagGodotVersion  string
+	flagGodotEditorPath string
 	flagKeepRuntime   bool
 	flagForceRebuild  bool
 	flagRegenerateKey bool
@@ -51,6 +60,7 @@ export configuration. Requires --godot-version in Slice 0.`,
 
 func init() {
 	createCmd.Flags().StringVar(&flagGodotVersion, "godot-version", "", "Godot version (required, e.g., 4.3.2)")
+	createCmd.Flags().StringVar(&flagGodotEditorPath, "godot-editor-path", "", "Path to Godot editor binary used for local version resolution")
 	createCmd.Flags().BoolVar(&flagKeepRuntime, "keep-runtime", false, "Keep toolchain runtime after successful build")
 	createCmd.Flags().BoolVar(&flagForceRebuild, "force-rebuild", false, "Skip idempotency check; always rebuild")
 	createCmd.Flags().BoolVar(&flagRegenerateKey, "regenerate-key", false, "Generate new encryption key (requires confirmation unless --force)")
@@ -58,6 +68,7 @@ func init() {
 	createCmd.Flags().BoolVar(&flagVerbose, "verbose", false, "Verbose output")
 
 	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(cleanCmd)
 }
 
 func main() {
@@ -132,6 +143,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	opts := &pipeline.Options{
 		ProjectRoot:   projectRoot,
 		GodotVersion:  flagGodotVersion,
+		GodotEditorPath: flagGodotEditorPath,
 		ProjectMinor:  projectMinor,
 		Platform:      "windows", // Hard-wired in Slice 0; Slice 3 will extend.
 		KeepRuntime:   flagKeepRuntime,
@@ -348,6 +360,25 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	logger.Info("  2. Go to Project → Export")
 	logger.Info("  3. Export your game using the Windows preset")
 	logger.Info("")
+
+	return nil
+}
+
+func runClean(cmd *cobra.Command, args []string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return &internal.Error{Code: internal.ExitGenericFailure, Message: "Could not get working directory."}
+	}
+
+	projectRoot, projectErr := project.Detect(cwd)
+	if projectErr != nil {
+		return projectErr
+	}
+
+	pruner := cleanup.NewPruner(projectRoot, false)
+	if err := pruner.PruneManual(); err != nil {
+		return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to clean .gst workspace.", Details: err.Error()}
+	}
 
 	return nil
 }

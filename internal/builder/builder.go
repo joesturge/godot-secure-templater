@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/longpath"
@@ -326,6 +327,7 @@ func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.Re
 	scanner := bufio.NewScanner(reader)
 	parser := progress.NewParser()
 	lastStage := progress.StageUnknown
+	start := time.Now()
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -333,7 +335,7 @@ func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.Re
 		if !isError {
 			stage := parser.ParseLine(line)
 			if stage != lastStage {
-				logger.Info(progress.FormatStageUpdate(stage))
+				logger.Info("%s (elapsed: %s)", progress.FormatStageUpdate(stage), time.Since(start).Round(time.Second))
 				lastStage = stage
 			}
 		}
