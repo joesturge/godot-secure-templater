@@ -3,6 +3,7 @@
 CLI tool for Godot 4.3+ template compilation with secure AES-256 encryption. ~85% test coverage.
 
 ## Tests
+- Follow TDD when it is possible. Always start new changes by writing new test cases (or changing existing tests). Remeber to consult `.github/instructions/go-tests.instructions.md` when creating tests.
 - Use `github.com/stretchr/testify/assert` only (no mocks)
 - Custom `*Error`: `assert.Nil(t, err)` | Standard: `assert.NoError(t, err)`
 - **MANDATORY**: GIVEN/WHEN/THEN comments on every test
