@@ -2,6 +2,8 @@
 
 **Secure encrypted Godot export templates, without the toolchain hassle.**
 
+<img width="735" height="342" alt="image" src="https://github.com/user-attachments/assets/3f19bdc2-1719-4cc4-a3bc-ada1d6d9cde2" />
+
 `gst` automates provisioning, compilation, and configuration of encrypted Godot export templates—all in an isolated workspace within your project. No manual C++ toolchain setup. No Python dependency hell. No SCons config. Just one command.
 
 ```bash
