@@ -12,7 +12,7 @@ $ gst create
 
 ## What It Does
 
-### 🔒 End-to-End Encryption
+### 🔒 Encrypted Godot Exports
 - Generates an AES-256 encryption key for your project
 - Compiles Godot templates with `SCRIPT_AES256_ENCRYPTION_KEY` baked in
 - Wires the key into your export settings

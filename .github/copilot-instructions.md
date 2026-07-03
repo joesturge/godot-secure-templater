@@ -1,44 +1,19 @@
-# Godot Secure Templater (gst)
+# Godot Secure Templater (gst) — Developer conventions (compact)
 
-CLI tool for Godot 4.3+ template compilation with secure AES-256 encryption. ~85% test coverage.
+This file is a high-level index. Detailed, targeted rules live under `.github/instructions/` and
+are applied by glob via `applyTo` to keep per-file-context small.
 
-## Tests
-- Follow TDD when it is possible. Always start new changes by writing new test cases (or changing existing tests). Remeber to consult `.github/instructions/go-tests.instructions.md` when creating tests.
-- Use `github.com/stretchr/testify/assert` only (no mocks)
-- Custom `*Error`: `assert.Nil(t, err)` | Standard: `assert.NoError(t, err)`
-- **MANDATORY**: GIVEN/WHEN/THEN comments on every test
-- Use `t.TempDir()` for filesystem tests
-- Consolidate in single `*_test.go` per package, not split files
-- All assertion messages descriptive, table-driven for scenarios
+- Tests: see `.github/instructions/go-tests.instructions.md`
+- Docs: see `.github/instructions/docs.instructions.md`
+- CI / Workflows: see `.github/instructions/ci.instructions.md`
 
-## Errors
-- Exit codes 0-10 defined in `internal/errors.go` only
-- Factory functions: `ErrMinorMismatch(projectMinor, supplied)`
-- Struct: `Code`, `Message` (brief), `Details` (full context)
+Key repo conventions (short):
+- Follow Slice-based plan in `docs/plan.md` (keep changes slice-local and incremental).
+- Stable exit codes: defined in `internal/errors.go` and relied on by CI workflows.
+- Release artifacts: tag-triggered (`v*`) GitHub Actions only; artifact names follow `gst-<os>-<arch>[-debug].zip`.
+- No unsafe INI round-trips: `internal/config` must perform byte-preserving, targeted edits only.
+- Crypto: AES-256 keys via `crypto/rand`, owner-only perms, atomic writes; never print raw keys in logs.
+- Toolchain: pinned dependencies in code; manifest-based caching (`manifest.json`) is the CI cache key.
+- TDD: all behavioural changes follow red → green → refactor; write a failing test first, make it pass with minimal code, then clean up.
 
-## Code Style
-- Packages: lowercase single-word (`errors`, `crypto`, `config`, `project`)
-- Exported: PascalCase | Unexported: camelCase
-- Imports: stdlib, blank line, 3rd-party
-
-## Crypto & Config
-- AES-256: `crypto/rand`, 32 bytes, key files 0600 perms, atomic writes
-- Config: targeted line edits (no parse/serialize), backup-once, atomic writes
-
-## Toolchain (internal/toolchain/)
-- **Python 3.11**: embed ZIP, no system Python needed
-- **MinGW 14.2.0**: x86_64 posix seh ucrt
-- **SCons 4.4.0**: egg-info format with `scons/scons/__main__.py`
-- **Godot Source**: version-tagged tar.gz from GitHub
-- Extraction: Pure-Go (ZIP, tar.gz with strip, 7z/LZMA2 via bodgit/sevenzip)
-- Checksums: SHA-256 with placeholder fallback for unknown versions
-
-## SCons Compilation (internal/builder/)
-- **Discovery** (priority): scons.py → scons/__main__.py → SCons/__main__.py → bin/scons → python -m SCons
-- **Embedded Python workaround**: Inject sys.path via `python -c "import sys; sys.path.insert(0, '/path'); exec(open(...).read())"` for __main__.py
-- **Env**: PATH (python/mingw/scons), PYTHONPATH (scons only), SCRIPT_AES256_ENCRYPTION_KEY, SystemRoot
-- **Build**: `python scons platform=windows target=release|debug dev_build=no optimize=speed d3d12=no`
-- **Output**: `godot.windows.template_release.x86_64.exe` → `.gst/templates/windows_template_release.exe`
-
-## Dependencies (Pinned)
-Go 1.21+, cobra v1.10.2, golang.org/x/crypto v0.53.0, testify v1.11.1, bodgit/sevenzip v1.6.4
+If you need to change a specific rule, add or edit the corresponding file in `.github/instructions/`.
