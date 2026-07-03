@@ -160,10 +160,14 @@ func TestExtractZip_Basic(t *testing.T) {
 	// Create a test ZIP file with some content
 	zipFile, err := os.Create(zipPath)
 	assert.NoError(t, err, "Failed to create zip file")
-	defer zipFile.Close()
+	defer func() {
+		assert.NoError(t, zipFile.Close(), "Zip file should close cleanly")
+	}()
 
 	zw := zip.NewWriter(zipFile)
-	defer zw.Close()
+	defer func() {
+		assert.NoError(t, zw.Close(), "Zip writer should close cleanly")
+	}()
 
 	// Add a test file to the ZIP
 	w, err := zw.Create("test.txt")
@@ -172,8 +176,10 @@ func TestExtractZip_Basic(t *testing.T) {
 	_, err = io.WriteString(w, "test content")
 	assert.NoError(t, err, "Failed to write to zip entry")
 
-	zw.Close()
-	zipFile.Close()
+	err = zw.Close()
+	assert.NoError(t, err, "Zip writer should close before extraction")
+	err = zipFile.Close()
+	assert.NoError(t, err, "Zip file should close before extraction")
 
 	// Extract to target directory
 	extractDir := filepath.Join(tempDir, "extracted")
@@ -208,7 +214,8 @@ func TestExtractTarGZ_Basic(t *testing.T) {
 
 	// NOTE: Creating a valid tar.gz from scratch is complex; this test
 	// documents the expected behavior rather than fully implementing it
-	tarGzFile.Close()
+	closeErr := tarGzFile.Close()
+	assert.NoError(t, closeErr, "Tar.gz file should close cleanly")
 
 	// WHEN calling extractTarGZ
 	extractDir := filepath.Join(tempDir, "extracted")

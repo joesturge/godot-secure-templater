@@ -60,7 +60,7 @@ func EnsureKey(keyPath string) (string, *internal.Error) {
 	}
 
 	if err := os.Rename(tmpPath, keyPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return "", &internal.Error{
 			Code:    internal.ExitGenericFailure,
 			Message: "Failed to finalize encryption key.",

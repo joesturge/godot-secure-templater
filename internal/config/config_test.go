@@ -170,12 +170,15 @@ func TestBackupOncePreservesRestorability(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "test.cfg")
 	bakPath := filePath + ".bak"
 	originalContent := "pristine original"
-	os.WriteFile(filePath, []byte(originalContent), 0644)
-	BackupOnce(filePath)
+	writeErr := os.WriteFile(filePath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the original file content")
+	backupErr := BackupOnce(filePath)
+	assert.Nil(t, backupErr, "BackupOnce should create a backup for restorability testing")
 
 	// AND the file is significantly modified
 	modifiedContent := "completely different content\nwith multiple lines\nand changes"
-	os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	writeErr = os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	assert.NoError(t, writeErr, "Should write the modified file content")
 
 	// WHEN checking the backup
 	bakContent, err := os.ReadFile(bakPath)
@@ -186,7 +189,8 @@ func TestBackupOncePreservesRestorability(t *testing.T) {
 	assert.Equal(t, originalContent, string(bakContent), "Backup should not be corrupted")
 
 	// WHEN restoring from backup
-	Rollback(filePath)
+	rollbackErr := Rollback(filePath)
+	assert.NoError(t, rollbackErr, "Rollback should restore the pristine backup without error")
 
 	// THEN the original content should be restored
 	restoredContent, _ := os.ReadFile(filePath)
@@ -225,8 +229,10 @@ func TestRollbackMultipleFiles(t *testing.T) {
 
 	// AND the files are created and backed up
 	for i, file := range files {
-		os.WriteFile(file, []byte("original"+string(rune(i))), 0644)
-		BackupOnce(file)
+		writeErr := os.WriteFile(file, []byte("original"+string(rune(i))), 0644)
+		assert.NoError(t, writeErr, "Should write the original file content before backing up")
+		backupErr := BackupOnce(file)
+		assert.Nil(t, backupErr, "BackupOnce should create a backup for each file")
 	}
 
 	// AND the files are modified
@@ -235,7 +241,8 @@ func TestRollbackMultipleFiles(t *testing.T) {
 	}
 
 	// WHEN rolling back all files
-	Rollback(files...)
+	rollbackErr := Rollback(files...)
+	assert.NoError(t, rollbackErr, "Rollback should restore all files without error")
 
 	// THEN all files should be restored to their original content
 	for i, file := range files {

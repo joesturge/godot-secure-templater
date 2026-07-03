@@ -229,7 +229,7 @@ func atomicWrite(path, content string) *internal.Error {
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return &internal.Error{
 			Code:    internal.ExitGenericFailure,
 			Message: fmt.Sprintf("Failed to finalize write: %s", path),
@@ -245,7 +245,9 @@ func Rollback(paths ...string) error {
 	for _, path := range paths {
 		bakPath := path + ".bak"
 		if data, err := os.ReadFile(bakPath); err == nil {
-			os.WriteFile(path, data, 0644)
+			if err := os.WriteFile(path, data, 0644); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

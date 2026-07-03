@@ -109,7 +109,8 @@ func TestEnsureKeyInvalidExistingKey(t *testing.T) {
 	// GIVEN an invalid key file
 	tmpDir := t.TempDir()
 	keyPath := filepath.Join(tmpDir, "encryption.key")
-	os.WriteFile(keyPath, []byte("not-a-valid-hex-key"), 0644)
+	writeErr := os.WriteFile(keyPath, []byte("not-a-valid-hex-key"), 0644)
+	assert.NoError(t, writeErr, "Should write the invalid key fixture")
 
 	// WHEN ensuring the key exists
 	key, err := EnsureKey(keyPath)

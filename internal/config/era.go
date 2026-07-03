@@ -43,18 +43,18 @@ func VersionToEra(version string) (Era, error) {
 			return Era41To42, nil
 		}
 		if minor == 0 {
-			return EraLegacy, fmt.Errorf("Godot 4.0 is not supported (template encryption requires 4.1+)")
+			return EraLegacy, fmt.Errorf("godot 4.0 is not supported (template encryption requires 4.1+)")
 		}
 		// 4.x for x > 3: future minor version, fail closed
-		return EraUnknown, fmt.Errorf("Godot 4.%d is not recognized; failing closed (update tool to support this version)", minor)
+		return EraUnknown, fmt.Errorf("godot 4.%d is not recognized; failing closed (update tool to support this version)", minor)
 	}
 
 	if major < 4 {
-		return EraLegacy, fmt.Errorf("Godot %d.x is not supported (template encryption requires 4.1+)", major)
+		return EraLegacy, fmt.Errorf("godot %d.x is not supported (template encryption requires 4.1+)", major)
 	}
 
 	// Future major versions (e.g., 5.x): fail closed
-	return EraUnknown, fmt.Errorf("Godot %d.%d is not recognized; failing closed (update tool to support this version)", major, minor)
+	return EraUnknown, fmt.Errorf("godot %d.%d is not recognized; failing closed (update tool to support this version)", major, minor)
 }
 
 // CredentialPath returns the file path where the encryption key should be written for the given era.

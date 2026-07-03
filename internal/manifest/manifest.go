@@ -91,7 +91,9 @@ func ComputeFileHash(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, file); err != nil {

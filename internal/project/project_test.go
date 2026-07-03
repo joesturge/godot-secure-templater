@@ -13,7 +13,8 @@ func TestDetectGodotProject(t *testing.T) {
 	// GIVEN a directory with a project.godot file
 	tmpDir := t.TempDir()
 	projectFile := filepath.Join(tmpDir, "project.godot")
-	os.WriteFile(projectFile, []byte("[application]\nname=\"Test\""), 0644)
+	writeErr := os.WriteFile(projectFile, []byte("[application]\nname=\"Test\""), 0644)
+	assert.NoError(t, writeErr, "Should write the project.godot fixture")
 
 	// WHEN detecting a Godot project
 	detected, err := Detect(tmpDir)
@@ -87,7 +88,8 @@ config/name="Test"
 			// GIVEN a project file with specific content
 			tmpDir := t.TempDir()
 			projectFile := filepath.Join(tmpDir, "project.godot")
-			os.WriteFile(projectFile, []byte(tt.content), 0644)
+			writeErr := os.WriteFile(projectFile, []byte(tt.content), 0644)
+			assert.NoError(t, writeErr, "Should write the project.godot fixture for the scenario")
 
 			// WHEN reading the version
 			got, err := ReadVersion(tmpDir)

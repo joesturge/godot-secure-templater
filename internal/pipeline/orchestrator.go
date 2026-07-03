@@ -65,13 +65,10 @@ type BuildResult struct {
 type Orchestrator struct {
 	opts *Options
 
-	// Lazy-initialized coordinators
-	versionResolver *version.Resolver
-	manifestLoader  *manifest.Loader
-	pruner          *cleanup.Pruner
-	pathChecker     *longpath.Checker
-	encryptionPath  string
-	manifestPath    string
+	pruner         *cleanup.Pruner
+	pathChecker    *longpath.Checker
+	encryptionPath string
+	manifestPath   string
 }
 
 // NewOrchestrator creates a pipeline orchestrator.

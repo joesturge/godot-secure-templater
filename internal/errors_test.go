@@ -190,8 +190,10 @@ func TestErrorExitCodeContract(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if int(tt.code) != int(tt.code) {
-			t.Errorf("Exit code contract violated: %s", tt.name)
-		}
+		// WHEN validating the exit code value
+		got := int(tt.code)
+
+		// THEN it should match the stable contract value
+		assert.Equal(t, got, int(tt.code), "Exit code contract should remain stable for %s", tt.name)
 	}
 }

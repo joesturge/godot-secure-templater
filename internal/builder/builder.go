@@ -122,7 +122,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 			}
 			return &internal.Error{
 				Code:    internal.ExitGenericFailure,
-				Message: fmt.Sprintf("SCons executable not found"),
+				Message: "SCons executable not found",
 				Details: fmt.Sprintf("Searched: %s\nContents: %v\nWill try python -m SCons as fallback", sconsBase, names),
 			}
 		}
@@ -217,7 +217,7 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 	if err := cmd.Start(); err != nil {
 		return &internal.Error{
 			Code:    internal.ExitBuildFailed,
-			Message: fmt.Sprintf("Failed to start SCons build"),
+			Message: "Failed to start SCons build",
 			Details: err.Error(),
 		}
 	}
@@ -263,7 +263,7 @@ func findGodotSource(baseDir string) (string, error) {
 	// If not found, provide helpful diagnostic
 	if len(entries) == 0 {
 		return "", fmt.Errorf(
-			"Godot source directory is empty. "+
+			"godot source directory is empty. "+
 				"Try running with --force-rebuild to re-extract the toolchain.\n"+
 				"Location: %s",
 			baseDir,
@@ -278,9 +278,9 @@ func findGodotSource(baseDir string) (string, error) {
 
 	return "", fmt.Errorf(
 		"no godot-* directory found in %s\n"+
-			"Found instead: %v\n"+
-			"This usually means the Godot source extraction failed.\n"+
-			"Try running with --force-rebuild to re-extract.",
+			"found instead: %v\n"+
+			"this usually means the Godot source extraction failed\n"+
+			"try running with --force-rebuild to re-extract",
 		baseDir, names,
 	)
 }
@@ -387,7 +387,9 @@ func moveTemplate(ctx *internal.RunContext, godotSrc string, target BuildTarget)
 			Details: err.Error(),
 		}
 	}
-	defer src.Close()
+	defer func() {
+		_ = src.Close()
+	}()
 
 	dst, err := os.Create(dstPath)
 	if err != nil {
@@ -397,7 +399,9 @@ func moveTemplate(ctx *internal.RunContext, godotSrc string, target BuildTarget)
 			Details: err.Error(),
 		}
 	}
-	defer dst.Close()
+	defer func() {
+		_ = dst.Close()
+	}()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		return &internal.Error{
