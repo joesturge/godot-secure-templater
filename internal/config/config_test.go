@@ -122,6 +122,91 @@ func TestInjectWindowsTemplateWithToolMarker(t *testing.T) {
 	assert.Contains(t, contentStr, toolMarker, "Should add tool marker for idempotency")
 }
 
+func TestInjectWindowsTemplateTargetsWindowsPresetSection(t *testing.T) {
+	// GIVEN an export_presets.cfg where Windows is not preset.0
+	originalContent := `[preset.0]
+name="Linux/X11"
+platform="linuxbsd"
+
+[preset.0.options]
+other_option="linux"
+
+[preset.1]
+name="Windows Desktop"
+platform="windows"
+
+[preset.1.options]
+other_option="windows"
+`
+
+	tmpDir := t.TempDir()
+	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+	writeErr := os.WriteFile(presetsPath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the multi-preset export presets fixture")
+
+	// WHEN injecting template paths
+	err := InjectWindowsTemplate(presetsPath, "C:/tmp/windows_release.exe", "C:/tmp/windows_debug.exe")
+
+	// THEN no error should occur
+	assert.Nil(t, err, "InjectWindowsTemplate should not error when Windows preset is not preset.0")
+
+	// AND custom template keys should be added to the Windows options section
+	content, readErr := os.ReadFile(presetsPath)
+	assert.NoError(t, readErr, "Should read modified export_presets.cfg")
+	contentStr := string(content)
+
+	assert.Contains(t, contentStr, "[preset.1.options]", "Windows options section should remain present")
+	assert.Contains(t, contentStr, "custom_template/release=\"C:/tmp/windows_release.exe\"", "Release template path should be injected into Windows preset")
+	assert.Contains(t, contentStr, "custom_template/debug=\"C:/tmp/windows_debug.exe\"", "Debug template path should be injected into Windows preset")
+
+	// AND non-Windows options should remain unchanged
+	assert.Contains(t, contentStr, "other_option=\"linux\"", "Non-Windows preset options should be preserved")
+}
+
+func TestInjectWindowsTemplateMissingOrBlankPresets(t *testing.T) {
+	tests := []struct {
+		name           string
+		initialContent *string
+	}{
+		{
+			name:           "missing export_presets file",
+			initialContent: nil,
+		},
+		{
+			name:           "blank export_presets file",
+			initialContent: func() *string { s := ""; return &s }(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a presets path that is either missing or blank
+			tmpDir := t.TempDir()
+			presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+
+			if tt.initialContent != nil {
+				writeErr := os.WriteFile(presetsPath, []byte(*tt.initialContent), 0644)
+				assert.NoError(t, writeErr, "Should set up initial blank export_presets fixture")
+			}
+
+			// WHEN injecting template paths
+			err := InjectWindowsTemplate(presetsPath, "C:/tmp/windows_template_release.exe", "C:/tmp/windows_template_debug.exe")
+
+			// THEN no error should occur
+			assert.Nil(t, err, "InjectWindowsTemplate should create or populate export_presets without errors")
+
+			// AND the resulting file should contain a preset options section and template keys
+			content, readErr := os.ReadFile(presetsPath)
+			assert.NoError(t, readErr, "export_presets.cfg should be created or updated")
+			contentStr := string(content)
+
+			assert.Contains(t, contentStr, "[preset.0.options]", "Should include a default preset options section when no Windows section exists")
+			assert.Contains(t, contentStr, "custom_template/release=\"C:/tmp/windows_template_release.exe\"", "Should inject release template path")
+			assert.Contains(t, contentStr, "custom_template/debug=\"C:/tmp/windows_template_debug.exe\"", "Should inject debug template path")
+		})
+	}
+}
+
 func TestInjectEncryptionKeyCreatesFile(t *testing.T) {
 	// GIVEN a non-existent credentials file path and encryption key
 	tmpDir := t.TempDir()

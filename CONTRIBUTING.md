@@ -209,8 +209,9 @@ os.WriteFile(keyPath, keyBytes, 0600)
 ### Build
 
 ```bash
-go build -o gst ./cmd/gst
-./gst --help
+mkdir -p dist
+go build -o dist/gst ./cmd/gst
+./dist/gst --help
 ```
 
 ### Test
@@ -243,7 +244,7 @@ golangci-lint run ./...
 
 ```bash
 go fmt ./...
-go build ./cmd/gst
+go build -o dist/gst ./cmd/gst
 go test ./...
 ```
 

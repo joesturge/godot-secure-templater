@@ -43,21 +43,32 @@ func BackupOnce(filePath string) *internal.Error {
 // InjectWindowsTemplate injects custom template paths into export_presets.cfg.
 // Targets the Windows preset and sets custom_template/release and custom_template/debug.
 func InjectWindowsTemplate(presetsPath, releasePath, debugPath string) *internal.Error {
-	if err := BackupOnce(presetsPath); err != nil {
-		return err
-	}
+	lines := ""
+	if info, statErr := os.Stat(presetsPath); statErr == nil && !info.IsDir() {
+		if err := BackupOnce(presetsPath); err != nil {
+			return err
+		}
 
-	lines, err := os.ReadFile(presetsPath)
-	if err != nil {
+		content, readErr := os.ReadFile(presetsPath)
+		if readErr != nil {
+			return &internal.Error{
+				Code:    internal.ExitGenericFailure,
+				Message: "Failed to read export_presets.cfg.",
+				Details: readErr.Error(),
+			}
+		}
+		lines = string(content)
+	} else if statErr != nil && !os.IsNotExist(statErr) {
 		return &internal.Error{
 			Code:    internal.ExitGenericFailure,
-			Message: "Failed to read export_presets.cfg.",
-			Details: err.Error(),
+			Message: "Failed to check export_presets.cfg.",
+			Details: statErr.Error(),
 		}
 	}
 
 	// Parse lines, find the Windows preset section, and inject the template paths.
-	newLines := injectTemplateKeys(string(lines), "preset.0.options", []struct {
+	section := detectWindowsOptionsSection(lines)
+	newLines := injectTemplateKeys(lines, section, []struct {
 		key   string
 		value string
 	}{
@@ -70,6 +81,38 @@ func InjectWindowsTemplate(presetsPath, releasePath, debugPath string) *internal
 	}
 
 	return nil
+}
+
+// detectWindowsOptionsSection finds the options section for the Windows export preset.
+// If no explicit Windows preset is found, it falls back to preset.0.options for compatibility.
+func detectWindowsOptionsSection(content string) string {
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	currentPreset := ""
+
+	for scanner.Scan() {
+		trimmed := strings.TrimSpace(scanner.Text())
+
+		if strings.HasPrefix(trimmed, "[preset.") && strings.HasSuffix(trimmed, "]") {
+			section := strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]")
+			if strings.HasSuffix(section, ".options") {
+				currentPreset = ""
+				continue
+			}
+
+			if strings.HasPrefix(section, "preset.") {
+				currentPreset = section
+				continue
+			}
+		}
+
+		if currentPreset != "" && (strings.HasPrefix(trimmed, "platform=") || strings.HasPrefix(trimmed, "name=")) {
+			if strings.Contains(strings.ToLower(trimmed), "windows") {
+				return currentPreset + ".options"
+			}
+		}
+	}
+
+	return "preset.0.options"
 }
 
 // InjectEncryptionKey injects the encryption key into .godot/export_credentials.cfg (Godot 4.3+).
@@ -120,6 +163,7 @@ func injectTemplateKeys(content, section string, keys []struct {
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	var result []string
 	inSection := false
+	foundSection := false
 	foundKeys := make(map[string]bool)
 
 	for scanner.Scan() {
@@ -128,6 +172,7 @@ func injectTemplateKeys(content, section string, keys []struct {
 		// Check for section header.
 		if strings.HasPrefix(strings.TrimSpace(line), "["+section+"]") {
 			inSection = true
+			foundSection = true
 			result = append(result, line)
 			continue
 		}
@@ -167,6 +212,13 @@ func injectTemplateKeys(content, section string, keys []struct {
 			if !foundKeys[kv.key] {
 				result = append(result, fmt.Sprintf("%s=%s %s", kv.key, kv.value, toolMarker))
 			}
+		}
+	}
+
+	if !foundSection {
+		result = append(result, fmt.Sprintf("[%s]", section))
+		for _, kv := range keys {
+			result = append(result, fmt.Sprintf("%s=%s %s", kv.key, kv.value, toolMarker))
 		}
 	}
 

@@ -82,13 +82,15 @@ jobs:
         go-version: '1.25.0'
     
     - name: Build CLI
-      run: go build -o gst ./cmd/gst
+      run: |
+        mkdir -p dist
+        go build -o dist/gst ./cmd/gst
     
     - name: Verify binary
-      run: ./gst --help
+      run: ./dist/gst --help
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: gst-linux
-        path: gst
+        path: dist/gst

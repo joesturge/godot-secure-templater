@@ -51,8 +51,9 @@ Each team member runs the tool on their own machine. Each gets their own encrypt
 ```bash
 git clone https://github.com/joemi/godot-secure-templater.git
 cd godot-secure-templater
-go build -o gst ./cmd/gst
-sudo mv gst /usr/local/bin/  # or add to PATH
+mkdir -p dist
+go build -o dist/gst ./cmd/gst
+sudo mv dist/gst /usr/local/bin/  # or add to PATH
 ```
 
 ### Cross-Compilation
@@ -61,16 +62,17 @@ Compile for different platforms using environment variables:
 
 ```bash
 # Windows (64-bit)
-GOOS=windows GOARCH=amd64 go build -o gst.exe ./cmd/gst
+mkdir -p dist
+GOOS=windows GOARCH=amd64 go build -o dist/gst.exe ./cmd/gst
 
 # Linux (64-bit)
-GOOS=linux GOARCH=amd64 go build -o gst ./cmd/gst
+GOOS=linux GOARCH=amd64 go build -o dist/gst ./cmd/gst
 
 # macOS (Intel)
-GOOS=darwin GOARCH=amd64 go build -o gst ./cmd/gst
+GOOS=darwin GOARCH=amd64 go build -o dist/gst ./cmd/gst
 
 # macOS (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o gst ./cmd/gst
+GOOS=darwin GOARCH=arm64 go build -o dist/gst ./cmd/gst
 ```
 
 The resulting binary runs on any machine with that OS/architecture—no additional dependencies needed.
