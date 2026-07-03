@@ -1,9 +1,17 @@
 package version
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"time"
 )
 
 // Method represents how a version was resolved.
@@ -131,11 +139,48 @@ type LocalEditorStrategy struct {
 }
 
 func (s *LocalEditorStrategy) Resolve() (*Resolution, error) {
-	// Stub: In Slice 1, implement:
-	// 1. If EditorPath is set, run it with --version
-	// 2. Check PATH for "godot"
-	// 3. Check common install paths (/usr/bin/godot, %ProgramFiles%/Godot, etc.)
-	// 4. Parse the output (e.g., "Godot v4.3.0.stable.official")
+	candidates := []string{}
+
+	if s.EditorPath != "" {
+		candidates = append(candidates, s.EditorPath)
+	} else {
+		for _, name := range []string{"godot4", "godot"} {
+			if resolved, err := exec.LookPath(name); err == nil {
+				candidates = append(candidates, resolved)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	var lastErr error
+	for _, candidate := range candidates {
+		cmd := exec.Command(candidate, "--version")
+		output, err := cmd.Output()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		normalized, normalizeErr := normalizeFromToolOutput(string(output))
+		if normalizeErr != nil {
+			lastErr = normalizeErr
+			continue
+		}
+
+		return &Resolution{
+			Version: normalized,
+			Method:  MethodLocalEditor,
+			Source:  candidate,
+		}, nil
+	}
+
+	if s.EditorPath != "" {
+		return nil, fmt.Errorf("local editor version resolution failed for %s: %w", s.EditorPath, lastErr)
+	}
+
 	return nil, nil
 }
 
@@ -151,14 +196,57 @@ type GitHubAPIStrategy struct {
 }
 
 func (s *GitHubAPIStrategy) Resolve() (*Resolution, error) {
-	// Stub: In Slice 1, implement:
-	// 1. Check cache for recent release metadata
-	// 2. If cache miss or stale, query GitHub API /repos/godotengine/godot/releases
-	// 3. Filter for releases matching MinorVersion (e.g., v4.3.x)
-	// 4. Pick the latest stable patch
-	// 5. Cache the result with timestamp
-	// 6. Handle API errors (rate limit, offline) as actionable errors
-	return nil, nil
+	if s.MinorVersion == "" {
+		return nil, nil
+	}
+
+	if cached := s.readCache(); cached != "" {
+		return &Resolution{Version: cached, Method: MethodGitHubAPI, Source: "GitHub API (cache)"}, nil
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/godotengine/godot/releases", nil)
+	if err != nil {
+		return nil, fmt.Errorf("construct github request: %w", err)
+	}
+	if s.AuthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.AuthToken)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("github releases query failed: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github releases query returned status %d", resp.StatusCode)
+	}
+
+	var releases []struct {
+		TagName    string `json:"tag_name"`
+		Prerelease bool   `json:"prerelease"`
+		Draft      bool   `json:"draft"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("decode github releases: %w", err)
+	}
+
+	best := pickLatestPatchForMinor(releases, s.MinorVersion)
+	if best == "" {
+		return nil, fmt.Errorf("no stable release found for minor version %s", s.MinorVersion)
+	}
+
+	s.writeCache(best)
+
+	return &Resolution{
+		Version: best,
+		Method:  MethodGitHubAPI,
+		Source:  "GitHub API",
+	}, nil
 }
 
 // InteractiveStrategy prompts the user for a version (stub for now).
@@ -168,10 +256,166 @@ type InteractiveStrategy struct {
 }
 
 func (s *InteractiveStrategy) Resolve() (*Resolution, error) {
-	// Stub: In Slice 1, implement:
-	// 1. Print a prompt asking for version
-	// 2. Read user input (or use PromptFunc for testing)
-	// 3. Validate and normalize
-	// 4. Return Resolution with Method=MethodInteractive
-	return nil, nil
+	if s.PromptFunc != nil {
+		input, err := s.PromptFunc("Enter Godot version (X.Y.Z): ")
+		if err != nil {
+			return nil, fmt.Errorf("interactive prompt failed: %w", err)
+		}
+		input = strings.TrimSpace(input)
+		if input == "" {
+			return nil, nil
+		}
+		normalized, err := NormalizeVersion(input)
+		if err != nil {
+			return nil, fmt.Errorf("interactive version invalid: %w", err)
+		}
+		return &Resolution{Version: normalized, Method: MethodInteractive, Source: "interactive prompt"}, nil
+	}
+
+	if stat, err := os.Stdin.Stat(); err != nil || (stat.Mode()&os.ModeCharDevice) == 0 {
+		return nil, nil
+	}
+
+	if _, err := fmt.Fprint(os.Stdout, "Enter Godot version (X.Y.Z): "); err != nil {
+		return nil, fmt.Errorf("interactive prompt write failed: %w", err)
+	}
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("interactive prompt read failed: %w", err)
+	}
+
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, nil
+	}
+
+	normalized, err := NormalizeVersion(input)
+	if err != nil {
+		return nil, fmt.Errorf("interactive version invalid: %w", err)
+	}
+
+	return &Resolution{Version: normalized, Method: MethodInteractive, Source: "interactive prompt"}, nil
+}
+
+type versionCacheEntry struct {
+	Version   string    `json:"version"`
+	FetchedAt time.Time `json:"fetched_at"`
+}
+
+func (s *GitHubAPIStrategy) cacheFilePath() string {
+	base := s.CacheDir
+	if base == "" {
+		base = filepath.Join(os.TempDir(), "gst-cache")
+	}
+	return filepath.Join(base, fmt.Sprintf("godot-%s.json", strings.ReplaceAll(s.MinorVersion, ".", "_")))
+}
+
+func (s *GitHubAPIStrategy) readCache() string {
+	path := s.cacheFilePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	var entry versionCacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return ""
+	}
+
+	if entry.Version == "" {
+		return ""
+	}
+
+	if time.Since(entry.FetchedAt) > 6*time.Hour {
+		return ""
+	}
+
+	return entry.Version
+}
+
+func (s *GitHubAPIStrategy) writeCache(version string) {
+	path := s.cacheFilePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return
+	}
+
+	entry := versionCacheEntry{Version: version, FetchedAt: time.Now().UTC()}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+
+	_ = os.WriteFile(path, data, 0644)
+}
+
+func normalizeFromToolOutput(output string) (string, error) {
+	re := regexp.MustCompile(`(\d+\.\d+\.\d+(?:\.[A-Za-z0-9._-]+)?)`)
+	match := re.FindString(strings.TrimSpace(output))
+	if match == "" {
+		return "", fmt.Errorf("could not parse Godot version from output: %q", strings.TrimSpace(output))
+	}
+
+	return NormalizeVersion(match)
+}
+
+func pickLatestPatchForMinor(releases []struct {
+	TagName    string `json:"tag_name"`
+	Prerelease bool   `json:"prerelease"`
+	Draft      bool   `json:"draft"`
+}, minor string) string {
+	candidates := []string{}
+	for _, release := range releases {
+		if release.Draft || release.Prerelease {
+			continue
+		}
+
+		tag := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+		normalized, err := NormalizeVersion(tag)
+		if err != nil {
+			continue
+		}
+
+		versionMinor, err := ExtractMinor(normalized)
+		if err != nil || versionMinor != minor {
+			continue
+		}
+
+		candidates = append(candidates, normalized)
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return compareSemver(candidates[i], candidates[j]) > 0
+	})
+
+	return candidates[0]
+}
+
+func compareSemver(a, b string) int {
+	parse := func(v string) [3]int {
+		parts := strings.Split(v, ".")
+		out := [3]int{}
+		for i := 0; i < 3 && i < len(parts); i++ {
+			if _, err := fmt.Sscanf(parts[i], "%d", &out[i]); err != nil {
+				out[i] = 0
+			}
+		}
+		return out
+	}
+
+	av := parse(a)
+	bv := parse(b)
+	for i := 0; i < 3; i++ {
+		if av[i] > bv[i] {
+			return 1
+		}
+		if av[i] < bv[i] {
+			return -1
+		}
+	}
+	return 0
 }

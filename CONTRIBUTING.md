@@ -11,6 +11,7 @@ Thank you for your interest in contributing! This guide covers the architecture,
 - [Code Conventions](#code-conventions)
 - [Safety Patterns](#safety-patterns)
 - [Development Workflow](#development-workflow)
+- [Release Binary Builds](#release-binary-builds)
 - [Testing](#testing)
 - [Adding a Platform](#adding-a-platform)
 
@@ -209,9 +210,32 @@ os.WriteFile(keyPath, keyBytes, 0600)
 ### Build
 
 ```bash
-go build -o gst ./cmd/gst
-./gst --help
+mkdir -p dist
+go build -o dist/gst ./cmd/gst
+./dist/gst --help
 ```
+
+## Release Binary Builds
+
+Use these commands when preparing binaries for GitHub Releases.
+
+```bash
+mkdir -p dist
+
+# Windows (64-bit)
+GOOS=windows GOARCH=amd64 go build -o dist/gst.exe ./cmd/gst
+
+# Linux (64-bit)
+GOOS=linux GOARCH=amd64 go build -o dist/gst ./cmd/gst
+
+# macOS (Intel)
+GOOS=darwin GOARCH=amd64 go build -o dist/gst ./cmd/gst
+
+# macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o dist/gst ./cmd/gst
+```
+
+The produced binaries are self-contained for their target OS/architecture.
 
 ### Test
 
@@ -243,7 +267,7 @@ golangci-lint run ./...
 
 ```bash
 go fmt ./...
-go build ./cmd/gst
+go build -o dist/gst ./cmd/gst
 go test ./...
 ```
 

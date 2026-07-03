@@ -63,7 +63,7 @@ func (p *Parser) ParseLine(line string) Stage {
 func (p *Parser) ParseOutput(output io.Reader) ([]Stage, error) {
 	scanner := bufio.NewScanner(output)
 	var stages []Stage
-	var lastStage Stage = StageUnknown
+	lastStage := StageUnknown
 
 	for scanner.Scan() {
 		line := scanner.Text()

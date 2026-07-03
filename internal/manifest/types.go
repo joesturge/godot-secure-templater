@@ -1,6 +1,9 @@
 package manifest
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Manifest records the inputs and outputs of a successful build run.
 // It enables idempotency (skip rebuild if inputs match) and serves as the cache key.
@@ -62,9 +65,19 @@ func (k *CacheKey) Equals(other *CacheKey) bool {
 		return false
 	}
 	for name, hash := range k.ToolchainChecksums {
-		if other.ToolchainChecksums[name] != hash {
+		if normalizeChecksum(name, other.ToolchainChecksums[name]) != normalizeChecksum(name, hash) {
 			return false
 		}
 	}
 	return true
+}
+
+func normalizeChecksum(name, value string) string {
+	if name == "godot_source" {
+		return ""
+	}
+	if strings.HasPrefix(value, "placeholder_godot_") {
+		return ""
+	}
+	return value
 }

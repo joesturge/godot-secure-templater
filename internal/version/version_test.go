@@ -301,39 +301,59 @@ func TestExplicitStrategyInvalid(t *testing.T) {
 }
 
 func TestLocalEditorStrategyStub(t *testing.T) {
-	// GIVEN a local editor strategy (stub in Slice 0 / early Slice 1)
+	// GIVEN a local editor strategy with no explicit editor path and no discovered binary guarantee
 	strategy := &LocalEditorStrategy{EditorPath: ""}
 
 	// WHEN resolving
 	got, err := strategy.Resolve()
 
-	// THEN it should decline (stub)
+	// THEN it should either resolve from local editor or decline gracefully
 	assert.Nil(t, err)
-	assert.Nil(t, got, "stub local editor strategy should decline")
+	if got != nil {
+		assert.Equal(t, MethodLocalEditor, got.Method, "Resolved method should be local-editor when a local editor is found")
+	}
 }
 
 func TestGitHubAPIStrategyStub(t *testing.T) {
-	// GIVEN a GitHub API strategy (stub in Slice 0 / early Slice 1)
-	strategy := &GitHubAPIStrategy{MinorVersion: "4.3"}
+	// GIVEN a GitHub API strategy without a target minor version
+	strategy := &GitHubAPIStrategy{MinorVersion: ""}
 
 	// WHEN resolving
 	got, err := strategy.Resolve()
 
-	// THEN it should decline (stub)
+	// THEN it should decline when no minor version is provided
 	assert.Nil(t, err)
-	assert.Nil(t, got, "stub GitHub API strategy should decline")
+	assert.Nil(t, got, "GitHub API strategy should decline when minor version is empty")
 }
 
 func TestInteractiveStrategyStub(t *testing.T) {
-	// GIVEN an interactive strategy (stub in Slice 0 / early Slice 1)
-	strategy := &InteractiveStrategy{}
+	// GIVEN an interactive strategy with a prompt function
+	strategy := &InteractiveStrategy{
+		PromptFunc: func(prompt string) (string, error) {
+			return "4.3.2", nil
+		},
+	}
 
 	// WHEN resolving
 	got, err := strategy.Resolve()
 
-	// THEN it should decline (stub)
+	// THEN it should resolve the prompted version
 	assert.Nil(t, err)
-	assert.Nil(t, got, "stub interactive strategy should decline")
+	assert.NotNil(t, got, "Interactive strategy should resolve version from prompt function")
+	assert.Equal(t, "4.3.2", got.Version, "Resolved version should match prompt input")
+	assert.Equal(t, MethodInteractive, got.Method, "Resolved method should be interactive")
+}
+
+func TestLocalEditorStrategyInvalidPath(t *testing.T) {
+	// GIVEN a local editor strategy with an explicit invalid editor path
+	strategy := &LocalEditorStrategy{EditorPath: "/definitely/not/a/godot/binary"}
+
+	// WHEN resolving
+	got, err := strategy.Resolve()
+
+	// THEN it should return an actionable error
+	assert.NotNil(t, err, "Local editor strategy should error when explicit editor path is invalid")
+	assert.Nil(t, got, "No resolution should be returned for invalid explicit editor path")
 }
 
 func TestResolverIntegration(t *testing.T) {

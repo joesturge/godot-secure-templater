@@ -174,3 +174,27 @@ func TestCheckPathPosixNoLimit(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Empty(t, warning)
 }
+
+func TestIsLongPathsEnabledNonWindowsPlatform(t *testing.T) {
+	// GIVEN a non-Windows checker
+	checker := NewChecker("linux")
+
+	// WHEN checking registry status
+	enabled, err := checker.IsLongPathsEnabled()
+
+	// THEN it should return false without error
+	assert.NoError(t, err, "Non-Windows platform checks should not error")
+	assert.False(t, enabled, "Long path registry state should be false on non-Windows platforms")
+}
+
+func TestIsLongPathsEnabledWindowsCheckerOnNonWindowsRuntime(t *testing.T) {
+	// GIVEN a Windows checker running on a non-Windows runtime in tests
+	checker := NewChecker("windows")
+
+	// WHEN checking registry status
+	enabled, err := checker.IsLongPathsEnabled()
+
+	// THEN it should degrade gracefully without error
+	assert.NoError(t, err, "Windows registry probe should degrade gracefully on non-Windows runtime")
+	assert.False(t, enabled, "LongPathsEnabled should be false when runtime is not Windows")
+}

@@ -2,6 +2,9 @@ package longpath
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
+	"strings"
 )
 
 // Checker inspects long-path handling capabilities on Windows.
@@ -84,6 +87,34 @@ func (c *Checker) DiagnosticMessage() string {
     → "Enable Win32 long paths" (Set to 'Enabled')
   • OR via Registry: HKLM\SYSTEM\CurrentControlSet\Control\FileSystem → LongPathsEnabled = 1
   • OR move your project to a shorter path (reduce directory nesting)`
+}
+
+// IsLongPathsEnabled checks the Windows registry setting LongPathsEnabled.
+// Returns false,nil on non-Windows platforms.
+func (c *Checker) IsLongPathsEnabled() (bool, error) {
+	if c.Platform != "windows" {
+		return false, nil
+	}
+
+	if runtime.GOOS != "windows" {
+		return false, nil
+	}
+
+	cmd := exec.Command(
+		"reg",
+		"query",
+		`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`,
+		"/v",
+		"LongPathsEnabled",
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, err
+	}
+
+	text := strings.ToLower(string(output))
+	return strings.Contains(text, "0x1") || strings.Contains(text, "0x00000001"), nil
 }
 
 // NeedsPrefixing checks if a path needs the extended-length prefix.

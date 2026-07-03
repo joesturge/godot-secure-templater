@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,21 @@ import (
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/stretchr/testify/assert"
 )
+
+type captureLogger struct {
+	lines []string
+}
+
+func (l *captureLogger) Info(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func formatLine(msg string, args ...interface{}) string {
+	if len(args) == 0 {
+		return msg
+	}
+	return fmt.Sprintf(msg, args...)
+}
 
 func TestFindGodotSource(t *testing.T) {
 	// GIVEN a temporary directory with Godot source structure
@@ -209,6 +225,26 @@ func TestStreamOutput_ErrorFlag(t *testing.T) {
 	assert.NotPanics(t, func() {
 		streamOutput(logger, reader, true)
 	}, "Should handle error output correctly")
+}
+
+func TestStreamOutput_EmitsElapsedStageUpdates(t *testing.T) {
+	// GIVEN stdout input that contains stage transitions
+	input := "Generating C++ bindings...\nCompiling core\nLinking\n"
+	reader := io.NopCloser(strings.NewReader(input))
+	logger := &captureLogger{}
+
+	// WHEN streaming output through the parser-aware logger
+	streamOutput(logger, reader, false)
+
+	// THEN stage updates should include elapsed-time context
+	foundElapsed := false
+	for _, line := range logger.lines {
+		if strings.Contains(line, "elapsed:") {
+			foundElapsed = true
+			break
+		}
+	}
+	assert.True(t, foundElapsed, "Stage updates should include elapsed-time counters")
 }
 
 // TestMoveTemplate tests for the moveTemplate function

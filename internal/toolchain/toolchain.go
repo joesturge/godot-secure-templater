@@ -1,9 +1,9 @@
 package toolchain
 
 import (
+	"bufio"
 	"archive/tar"
 	"archive/zip"
-	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -47,50 +47,49 @@ func WindowsComponents(version string) []internal.Artifact {
 		{
 			Name:      "godot_source",
 			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s-stable.tar.gz", version),
-			SHA256:    godotChecksumForVersion(version), // Version-keyed checksums
+			SHA256:    godotChecksumForVersion(version),
 			ExtractTo: "godot_source",
 			Kind:      internal.ArchiveTarGZ,
 		},
 	}
 }
 
-// godotChecksumForVersion returns the checksum for a Godot version.
-// It fetches from GitHub releases; if unavailable, returns a placeholder (checksum verification skipped).
-func godotChecksumForVersion(version string) string {
-	// Try to fetch from GitHub; if unavailable, skip verification
-	checksum := fetchGodotChecksumFromGitHub(version)
-	if checksum != "" {
-		return checksum
-	}
-
-	// Placeholder for unknown/unreachable versions (will skip checksum verification)
-	return "placeholder_godot_" + version
+var pinnedGodotChecksums = map[string]string{
+	"4.6.3": "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c",
 }
 
-// fetchGodotChecksumFromGitHub attempts to fetch the checksum from the official GitHub release.
-// It looks for SHA256-checksums.txt in the release assets.
+// godotChecksumForVersion returns a checksum for a Godot version.
+// It prefers pinned values and falls back to official release checksum metadata when available.
+func godotChecksumForVersion(version string) string {
+	if pinned, ok := pinnedGodotChecksums[version]; ok {
+		return pinned
+	}
+
+	return fetchGodotChecksumFromGitHub(version)
+}
+
+// fetchGodotChecksumFromGitHub tries to read SHA256-checksums.txt from the official release.
+// If unavailable, it returns empty string.
 func fetchGodotChecksumFromGitHub(version string) string {
-	// URL to the checksums file on GitHub releases
 	checksumsURL := fmt.Sprintf(
 		"https://github.com/godotengine/godot/releases/download/%s-stable/SHA256-checksums.txt",
 		version,
 	)
 
 	resp, err := http.Get(checksumsURL)
-	if err != nil || resp.StatusCode != 200 {
-		// Silently fail; will fall back to hardcoded value
-		if resp != nil {
-			resp.Body.Close()
-		}
+	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
-	// Parse the checksums file
-	// Format: "sha256 filename" or "sha256  filename"
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	targetName := fmt.Sprintf("godot-%s-stable.tar.gz", version)
 	scanner := bufio.NewScanner(resp.Body)
-	targetFileAlt := fmt.Sprintf("godot-%s-stable.tar.gz", version)
-
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -102,13 +101,9 @@ func fetchGodotChecksumFromGitHub(version string) string {
 			continue
 		}
 
-		checksum := parts[0]
-		filename := parts[len(parts)-1] // Last field is usually the filename
-
-		// Match against common Godot source archive names
-		if strings.Contains(filename, targetFileAlt) ||
-			strings.HasSuffix(filename, ".tar.gz") && strings.Contains(filename, version) {
-			return checksum
+		filename := parts[len(parts)-1]
+		if filename == targetName {
+			return parts[0]
 		}
 	}
 
@@ -118,6 +113,10 @@ func fetchGodotChecksumFromGitHub(version string) string {
 // Provision downloads and verifies toolchain components, extracting them into runtime/.
 func Provision(ctx *internal.RunContext, components []internal.Artifact) *internal.Error {
 	ctx.Logger.Info("Provisioning toolchain for Godot %s...", ctx.Godot.Patch)
+
+	if err := EnsureSufficientDiskSpace(ctx.Workspace.Root, minimumRequiredDiskBytes); err != nil {
+		return err
+	}
 
 	for _, art := range components {
 		ctx.Logger.Info("  → %s", art.Name)
@@ -131,7 +130,7 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}
 
 		// Clean up empty/invalid directory
-		os.RemoveAll(targetDir)
+		_ = os.RemoveAll(targetDir)
 
 		// Create target directory
 		if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -152,16 +151,28 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 				Details: err.Error(),
 			}
 		}
-		defer os.Remove(archivePath)
+		defer func(path string) {
+			_ = os.Remove(path)
+		}(archivePath)
 
-		// Verify checksum (skip if placeholder)
-		if !strings.HasSuffix(art.SHA256, "5c5d") && art.SHA256 != "" && !strings.HasPrefix(art.SHA256, "placeholder") {
+		if art.SHA256 == "" {
+			if art.Name != "godot_source" {
+				return &internal.Error{
+					Code:    internal.ExitChecksumMismatch,
+					Message: fmt.Sprintf("No checksum available for %s", art.Name),
+					Details: "Provisioning requires checksum metadata for pinned toolchain artifacts.",
+				}
+			}
+
+			ctx.Logger.Warn(
+				"No checksum metadata found for Godot %s source archive; continuing for compatibility",
+				ctx.Godot.Patch,
+			)
+		} else {
 			ctx.Logger.Debug("Verifying checksum for %s", art.Name)
 			if err := VerifyChecksum(archivePath, art.SHA256); err != nil {
 				return err
 			}
-		} else {
-			ctx.Logger.Warn("Skipping checksum verification for %s (placeholder)", art.Name)
 		}
 
 		// Extract archive
@@ -204,8 +215,21 @@ func isProvisionedAndValid(targetDir, name string) bool {
 
 	// For godot_source, verify there's a godot-* subdirectory
 	if strings.HasPrefix(name, "godot") {
+		// Support both extracted layouts:
+		// 1) top-level godot-* folder
+		// 2) stripped archive root containing source tree files directly
+		knownRootMarkers := map[string]bool{
+			"SConstruct": true,
+			"version.py": true,
+			"core":      true,
+			"platform":  true,
+		}
+
 		for _, entry := range entries {
 			if entry.IsDir() && strings.HasPrefix(entry.Name(), "godot-") {
+				return true
+			}
+			if knownRootMarkers[entry.Name()] {
 				return true
 			}
 		}
@@ -222,7 +246,9 @@ func downloadFile(dst, url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
@@ -232,10 +258,12 @@ func downloadFile(dst, url string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
-		os.Remove(dst)
+		_ = os.Remove(dst)
 		return err
 	}
 
@@ -265,7 +293,9 @@ func extractZip(zipPath, targetDir string) error {
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	for _, file := range reader.File {
 		fpath := filepath.Join(targetDir, file.Name)
@@ -276,7 +306,9 @@ func extractZip(zipPath, targetDir string) error {
 		}
 
 		if file.FileInfo().IsDir() {
-			os.MkdirAll(fpath, os.ModePerm)
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -291,18 +323,23 @@ func extractZip(zipPath, targetDir string) error {
 
 		rc, err := file.Open()
 		if err != nil {
-			outFile.Close()
+			_ = outFile.Close()
 			return err
 		}
 
 		if _, err := io.Copy(outFile, rc); err != nil {
-			outFile.Close()
-			rc.Close()
+			_ = outFile.Close()
+			_ = rc.Close()
 			return err
 		}
 
-		outFile.Close()
-		rc.Close()
+		if err := outFile.Close(); err != nil {
+			_ = rc.Close()
+			return err
+		}
+		if err := rc.Close(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -315,19 +352,22 @@ func extractTarGZ(gzPath, targetDir string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	gr, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer gr.Close()
+	defer func() {
+		_ = gr.Close()
+	}()
 
 	tr := tar.NewReader(gr)
 
 	// Track top-level entries to detect if we should strip one level
-	var topLevelDirs map[string]bool = make(map[string]bool)
-	var entries []*tar.Header
+	topLevelDirs := make(map[string]bool)
 
 	// First pass: collect all entries and detect top-level structure
 	for {
@@ -338,8 +378,6 @@ func extractTarGZ(gzPath, targetDir string) error {
 		if err != nil {
 			return err
 		}
-
-		entries = append(entries, header)
 
 		// Get top-level entry name
 		parts := strings.Split(strings.TrimRight(header.Name, "/"), "/")
@@ -352,12 +390,16 @@ func extractTarGZ(gzPath, targetDir string) error {
 	stripOneLevel := len(topLevelDirs) == 1
 
 	// Reopen file for extraction
-	file.Seek(0, 0)
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
 	gr, err = gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer gr.Close()
+	defer func() {
+		_ = gr.Close()
+	}()
 
 	tr = tar.NewReader(gr)
 
@@ -391,7 +433,9 @@ func extractTarGZ(gzPath, targetDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			os.MkdirAll(fpath, os.ModePerm)
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return err
+			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
 				return err
@@ -403,10 +447,12 @@ func extractTarGZ(gzPath, targetDir string) error {
 			}
 
 			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return err
 			}
-			outFile.Close()
+			if err := outFile.Close(); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -421,10 +467,12 @@ func extract7z(archivePath, targetDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open 7z archive: %w", err)
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	// Track top-level entries to potentially strip one level
-	var topLevelDirs map[string]bool = make(map[string]bool)
+	topLevelDirs := make(map[string]bool)
 	for _, file := range reader.File {
 		parts := strings.Split(strings.TrimRight(file.Name, "/"), "/")
 		if len(parts) > 0 && parts[0] != "" {
@@ -456,7 +504,9 @@ func extract7z(archivePath, targetDir string) error {
 		}
 
 		if file.FileInfo().IsDir() {
-			os.MkdirAll(fpath, os.ModePerm)
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -473,18 +523,23 @@ func extract7z(archivePath, targetDir string) error {
 
 		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.FileInfo().Mode())
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return err
 		}
 
 		if _, err := io.Copy(outFile, rc); err != nil {
-			outFile.Close()
-			rc.Close()
+			_ = outFile.Close()
+			_ = rc.Close()
 			return err
 		}
 
-		outFile.Close()
-		rc.Close()
+		if err := outFile.Close(); err != nil {
+			_ = rc.Close()
+			return err
+		}
+		if err := rc.Close(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -500,7 +555,9 @@ func VerifyChecksum(filePath, expectedSHA256 string) *internal.Error {
 			Details: err.Error(),
 		}
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, file); err != nil {
@@ -523,7 +580,7 @@ func VerifyChecksum(filePath, expectedSHA256 string) *internal.Error {
 // This ensures that python -m SCons works correctly.
 func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *internal.Error {
 	pythonExe := filepath.Join(ctx.Workspace.Runtime, "python", "python.exe")
-	
+
 	// On non-Windows, try without .exe
 	if _, err := os.Stat(pythonExe); err != nil {
 		pythonExe = filepath.Join(ctx.Workspace.Runtime, "python", "python")
@@ -541,7 +598,7 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 	// Run setup.py install from sconsDir
 	cmd := exec.Command(pythonExe, "setup.py", "install")
 	cmd.Dir = sconsDir
-	
+
 	// Capture output
 	output, err := cmd.CombinedOutput()
 	if err != nil {

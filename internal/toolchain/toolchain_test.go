@@ -29,7 +29,9 @@ func TestWindowsComponents(t *testing.T) {
 	for i, expectedName := range expectedNames {
 		assert.Equal(t, expectedName, components[i].Name, "Component %d should be %s", i, expectedName)
 		assert.NotEmpty(t, components[i].URL, "Component %d should have non-empty URL", i)
-		assert.NotEmpty(t, components[i].SHA256, "Component %d should have non-empty SHA256", i)
+		if components[i].Name != "godot_source" {
+			assert.NotEmpty(t, components[i].SHA256, "Component %d should have non-empty SHA256", i)
+		}
 		assert.NotEmpty(t, components[i].ExtractTo, "Component %d should have non-empty ExtractTo", i)
 	}
 }
@@ -139,7 +141,7 @@ func TestIsProvisionedAndValid_GodotSource(t *testing.T) {
 }
 
 func TestIsProvisionedAndValid_GodotSource_MissingStable(t *testing.T) {
-	// GIVEN a directory with wrong subdirectory name (doesn't start with godot-)
+	// GIVEN a directory with no Godot source markers
 	tempDir := t.TempDir()
 	wrongDir := filepath.Join(tempDir, "src")
 	err := os.Mkdir(wrongDir, 0755)
@@ -148,8 +150,23 @@ func TestIsProvisionedAndValid_GodotSource_MissingStable(t *testing.T) {
 	// WHEN calling isProvisionedAndValid for godot_source
 	result := isProvisionedAndValid(tempDir, "godot_source")
 
-	// THEN it should return false (no godot-* subdirectory)
-	assert.False(t, result, "Directory without godot-* subdirectory should not be provisioned")
+	// THEN it should return false (no godot-* subdirectory and no known root markers)
+	assert.False(t, result, "Directory without godot source markers should not be provisioned")
+}
+
+func TestIsProvisionedAndValid_GodotSource_StrippedRootLayout(t *testing.T) {
+	// GIVEN a directory with stripped Godot source root markers
+	tempDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(tempDir, "SConstruct"), []byte(""), 0644)
+	assert.NoError(t, err, "Failed to create SConstruct marker")
+	err = os.Mkdir(filepath.Join(tempDir, "core"), 0755)
+	assert.NoError(t, err, "Failed to create core directory marker")
+
+	// WHEN calling isProvisionedAndValid for godot_source
+	result := isProvisionedAndValid(tempDir, "godot_source")
+
+	// THEN it should return true
+	assert.True(t, result, "Directory with stripped root markers should be considered provisioned")
 }
 
 func TestExtractZip_Basic(t *testing.T) {
@@ -160,10 +177,8 @@ func TestExtractZip_Basic(t *testing.T) {
 	// Create a test ZIP file with some content
 	zipFile, err := os.Create(zipPath)
 	assert.NoError(t, err, "Failed to create zip file")
-	defer zipFile.Close()
 
 	zw := zip.NewWriter(zipFile)
-	defer zw.Close()
 
 	// Add a test file to the ZIP
 	w, err := zw.Create("test.txt")
@@ -172,8 +187,10 @@ func TestExtractZip_Basic(t *testing.T) {
 	_, err = io.WriteString(w, "test content")
 	assert.NoError(t, err, "Failed to write to zip entry")
 
-	zw.Close()
-	zipFile.Close()
+	err = zw.Close()
+	assert.NoError(t, err, "Zip writer should close before extraction")
+	err = zipFile.Close()
+	assert.NoError(t, err, "Zip file should close before extraction")
 
 	// Extract to target directory
 	extractDir := filepath.Join(tempDir, "extracted")
@@ -208,7 +225,8 @@ func TestExtractTarGZ_Basic(t *testing.T) {
 
 	// NOTE: Creating a valid tar.gz from scratch is complex; this test
 	// documents the expected behavior rather than fully implementing it
-	tarGzFile.Close()
+	closeErr := tarGzFile.Close()
+	assert.NoError(t, closeErr, "Tar.gz file should close cleanly")
 
 	// WHEN calling extractTarGZ
 	extractDir := filepath.Join(tempDir, "extracted")
@@ -220,20 +238,26 @@ func TestExtractTarGZ_Basic(t *testing.T) {
 	assert.NoError(t, err, "Should initialize extraction directory")
 }
 
-func TestGodotChecksumForVersion_Placeholder(t *testing.T) {
-	// GIVEN a version string
+func TestGodotChecksumForVersionDoesNotUsePlaceholder(t *testing.T) {
+	// GIVEN a known Godot version
 	version := "4.6.3"
 
 	// WHEN calling godotChecksumForVersion
 	checksum := godotChecksumForVersion(version)
 
-	// THEN it should return either a valid checksum or placeholder
-	assert.NotEmpty(t, checksum, "Should return non-empty checksum or placeholder")
+	// THEN it should never return a placeholder checksum
+	assert.False(t, strings.HasPrefix(checksum, "placeholder"), "Checksum resolution should never return placeholders")
+}
 
-	// AND if it's a placeholder, it should follow the pattern
-	if strings.HasPrefix(checksum, "placeholder") {
-		assert.True(t, strings.Contains(checksum, version), "Placeholder should contain version")
-	}
+func TestGodotChecksumForVersionUnknown(t *testing.T) {
+	// GIVEN a clearly non-existent Godot version
+	version := "9.9.9"
+
+	// WHEN calling godotChecksumForVersion
+	checksum := godotChecksumForVersion(version)
+
+	// THEN it should not return a placeholder checksum
+	assert.False(t, strings.HasPrefix(checksum, "placeholder"), "Unknown versions should never use placeholder checksums")
 }
 
 func TestDownloadFile_NotFound(t *testing.T) {
@@ -281,7 +305,7 @@ func TestInstallSconsToEmbeddedPython_DirectoryNotFound(t *testing.T) {
 func TestInstallSconsToEmbeddedPython_NoSetupPy(t *testing.T) {
 	// GIVEN a RunContext with workspace setup and a SCons directory without setup.py
 	tempDir := t.TempDir()
-	
+
 	pythonDir := filepath.Join(tempDir, "python")
 	err := os.Mkdir(pythonDir, 0755)
 	assert.NoError(t, err, "Failed to create python directory")
@@ -327,4 +351,62 @@ func TestExtractArchive_InvalidKind(t *testing.T) {
 
 	// THEN it should return an error
 	assert.Error(t, err, "Should error on unknown archive kind")
+}
+
+func TestEnsureSufficientDiskSpace(t *testing.T) {
+	tests := []struct {
+		name          string
+		available     uint64
+		required      uint64
+		probeErr      error
+		wantErr       bool
+		wantErrCode   internal.ExitCode
+	}{
+		{
+			name:        "enough disk space available",
+			available:   10 * 1024 * 1024 * 1024,
+			required:    5 * 1024 * 1024 * 1024,
+			wantErr:     false,
+		},
+		{
+			name:        "insufficient disk space",
+			available:   2 * 1024 * 1024 * 1024,
+			required:    5 * 1024 * 1024 * 1024,
+			wantErr:     true,
+			wantErrCode: internal.ExitInsufficientDisk,
+		},
+		{
+			name:        "disk probe failure",
+			available:   0,
+			required:    5 * 1024 * 1024 * 1024,
+			probeErr:    fmt.Errorf("statfs failed"),
+			wantErr:     true,
+			wantErrCode: internal.ExitGenericFailure,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a deterministic disk-space probe response
+			oldProbe := getAvailableDiskBytes
+			getAvailableDiskBytes = func(path string) (uint64, error) {
+				return tt.available, tt.probeErr
+			}
+			t.Cleanup(func() {
+				getAvailableDiskBytes = oldProbe
+			})
+
+			// WHEN checking for sufficient disk space
+			err := EnsureSufficientDiskSpace("/tmp", tt.required)
+
+			if tt.wantErr {
+				// THEN an error should be returned with the expected code
+				assert.NotNil(t, err, "Disk-space check should return error for failing scenarios")
+				assert.Equal(t, tt.wantErrCode, err.Code, "Error code should match expected disk-space failure mode")
+			} else {
+				// THEN no error should be returned
+				assert.Nil(t, err, "Disk-space check should succeed when available bytes exceed requirement")
+			}
+		})
+	}
 }

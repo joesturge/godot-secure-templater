@@ -14,7 +14,8 @@ func TestBackupOnceCreatesBackup(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "test.cfg")
 	bakPath := filePath + ".bak"
 	originalContent := "original content"
-	os.WriteFile(filePath, []byte(originalContent), 0644)
+	writeErr := os.WriteFile(filePath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the source file before creating a backup")
 
 	// WHEN creating a backup for the first time
 	err := BackupOnce(filePath)
@@ -36,11 +37,14 @@ func TestBackupOnceDoesNotOverwrite(t *testing.T) {
 	bakPath := filePath + ".bak"
 	originalContent := "original"
 	modifiedContent := "modified"
-	os.WriteFile(filePath, []byte(originalContent), 0644)
-	os.WriteFile(bakPath, []byte(originalContent), 0644)
+	writeErr := os.WriteFile(filePath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the original file before creating a backup")
+	writeErr = os.WriteFile(bakPath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should seed the pristine backup file")
 
 	// AND the original file has been modified
-	os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	writeErr = os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	assert.NoError(t, writeErr, "Should modify the source file after creating a backup")
 
 	// WHEN creating a backup again
 	err := BackupOnce(filePath)
@@ -70,7 +74,8 @@ other_option="value"
 
 	tmpDir := t.TempDir()
 	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
-	os.WriteFile(presetsPath, []byte(originalContent), 0644)
+	writeErr := os.WriteFile(presetsPath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the export presets fixture")
 
 	// WHEN injecting template paths
 	releasePath := "/path/to/release.exe"
@@ -98,11 +103,12 @@ other_option="value"
 	assert.Contains(t, content, "[preset.0]", "Should preserve section header")
 }
 
-func TestInjectWindowsTemplateWithToolMarker(t *testing.T) {
+func TestInjectWindowsTemplateWritesParseableValues(t *testing.T) {
 	// GIVEN an export_presets.cfg file
 	tmpDir := t.TempDir()
 	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
-	os.WriteFile(presetsPath, []byte("[preset.0.options]\n"), 0644)
+	writeErr := os.WriteFile(presetsPath, []byte("[preset.0.options]\n"), 0644)
+	assert.NoError(t, writeErr, "Should write the export presets fixture")
 
 	// WHEN injecting template paths
 	err := InjectWindowsTemplate(presetsPath, "/path/release", "/path/debug")
@@ -110,10 +116,123 @@ func TestInjectWindowsTemplateWithToolMarker(t *testing.T) {
 	// THEN no error should occur
 	assert.Nil(t, err, "InjectWindowsTemplate should not error")
 
-	// AND the tool marker should be present for idempotency
+	// AND injected keys should be plain parseable values without inline comments
 	content, _ := os.ReadFile(presetsPath)
 	contentStr := string(content)
-	assert.Contains(t, contentStr, toolMarker, "Should add tool marker for idempotency")
+	assert.Contains(t, contentStr, "custom_template/release=\"/path/release\"", "Should inject plain release template key-value")
+	assert.Contains(t, contentStr, "custom_template/debug=\"/path/debug\"", "Should inject plain debug template key-value")
+	assert.NotContains(t, contentStr, "# [gst managed]", "Should avoid inline markers that may break Godot parsing")
+}
+
+func TestInjectWindowsTemplateNormalizesPathSeparators(t *testing.T) {
+	// GIVEN an export presets file and Windows-style template paths
+	tmpDir := t.TempDir()
+	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+	writeErr := os.WriteFile(presetsPath, []byte("[preset.0.options]\n"), 0644)
+	assert.NoError(t, writeErr, "Should write export presets fixture")
+
+	releasePath := `C:\Users\joemi\Documents\godot\kings-road\.gst\templates\windows_template_release.exe`
+	debugPath := `C:\Users\joemi\Documents\godot\kings-road\.gst\templates\windows_template_debug.exe`
+
+	// WHEN injecting template paths
+	err := InjectWindowsTemplate(presetsPath, releasePath, debugPath)
+
+	// THEN paths should be written with forward slashes
+	assert.Nil(t, err, "InjectWindowsTemplate should not error")
+	content, readErr := os.ReadFile(presetsPath)
+	assert.NoError(t, readErr, "Should read modified export presets")
+	contentStr := string(content)
+	assert.Contains(t, contentStr, `custom_template/release="C:/Users/joemi/Documents/godot/kings-road/.gst/templates/windows_template_release.exe"`, "Release template path should use forward slashes")
+	assert.Contains(t, contentStr, `custom_template/debug="C:/Users/joemi/Documents/godot/kings-road/.gst/templates/windows_template_debug.exe"`, "Debug template path should use forward slashes")
+}
+
+func TestInjectWindowsTemplateTargetsWindowsPresetSection(t *testing.T) {
+	// GIVEN an export_presets.cfg where Windows is not preset.0
+	originalContent := `[preset.0]
+name="Linux/X11"
+platform="linuxbsd"
+
+[preset.0.options]
+other_option="linux"
+
+[preset.1]
+name="Windows Desktop"
+platform="windows"
+
+[preset.1.options]
+other_option="windows"
+`
+
+	tmpDir := t.TempDir()
+	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+	writeErr := os.WriteFile(presetsPath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the multi-preset export presets fixture")
+
+	// WHEN injecting template paths
+	err := InjectWindowsTemplate(presetsPath, "C:/tmp/windows_release.exe", "C:/tmp/windows_debug.exe")
+
+	// THEN no error should occur
+	assert.Nil(t, err, "InjectWindowsTemplate should not error when Windows preset is not preset.0")
+
+	// AND custom template keys should be added to the Windows options section
+	content, readErr := os.ReadFile(presetsPath)
+	assert.NoError(t, readErr, "Should read modified export_presets.cfg")
+	contentStr := string(content)
+
+	assert.Contains(t, contentStr, "[preset.1.options]", "Windows options section should remain present")
+	assert.Contains(t, contentStr, "custom_template/release=\"C:/tmp/windows_release.exe\"", "Release template path should be injected into Windows preset")
+	assert.Contains(t, contentStr, "custom_template/debug=\"C:/tmp/windows_debug.exe\"", "Debug template path should be injected into Windows preset")
+	assert.NotContains(t, contentStr, "windows_template_release=", "Legacy release template key should not be written")
+	assert.NotContains(t, contentStr, "windows_template_debug=", "Legacy debug template key should not be written")
+
+	// AND non-Windows options should remain unchanged
+	assert.Contains(t, contentStr, "other_option=\"linux\"", "Non-Windows preset options should be preserved")
+}
+
+func TestInjectWindowsTemplateMissingOrBlankPresets(t *testing.T) {
+	tests := []struct {
+		name           string
+		initialContent *string
+	}{
+		{
+			name:           "missing export_presets file",
+			initialContent: nil,
+		},
+		{
+			name:           "blank export_presets file",
+			initialContent: func() *string { s := ""; return &s }(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a presets path that is either missing or blank
+			tmpDir := t.TempDir()
+			presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
+
+			if tt.initialContent != nil {
+				writeErr := os.WriteFile(presetsPath, []byte(*tt.initialContent), 0644)
+				assert.NoError(t, writeErr, "Should set up initial blank export_presets fixture")
+			}
+
+			// WHEN injecting template paths
+			err := InjectWindowsTemplate(presetsPath, "C:/tmp/windows_template_release.exe", "C:/tmp/windows_template_debug.exe")
+
+			// THEN no error should occur
+			assert.Nil(t, err, "InjectWindowsTemplate should create or populate export_presets without errors")
+
+			// AND the resulting file should contain a preset options section and template keys
+			content, readErr := os.ReadFile(presetsPath)
+			assert.NoError(t, readErr, "export_presets.cfg should be created or updated")
+			contentStr := string(content)
+
+			assert.Contains(t, contentStr, "[preset.0.options]", "Should include a default preset options section when no Windows section exists")
+			assert.Contains(t, contentStr, "custom_template/release=\"C:/tmp/windows_template_release.exe\"", "Should inject release template path")
+			assert.Contains(t, contentStr, "custom_template/debug=\"C:/tmp/windows_template_debug.exe\"", "Should inject debug template path")
+			assert.NotContains(t, contentStr, "windows_template_release=", "Should not inject legacy release template key")
+			assert.NotContains(t, contentStr, "windows_template_debug=", "Should not inject legacy debug template key")
+		})
+	}
 }
 
 func TestInjectEncryptionKeyCreatesFile(t *testing.T) {
@@ -145,7 +264,8 @@ func TestInjectEncryptionKeyUpdateExisting(t *testing.T) {
 	initialContent := `[encryption]
 script_encryption_key="old_key_here"
 `
-	os.WriteFile(credsPath, []byte(initialContent), 0644)
+	writeErr := os.WriteFile(credsPath, []byte(initialContent), 0644)
+	assert.NoError(t, writeErr, "Should write the existing credentials fixture")
 
 	// WHEN injecting a new encryption key
 	newKey := "new_key_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0"
@@ -164,18 +284,54 @@ script_encryption_key="old_key_here"
 	assert.Contains(t, contentStr, newKey, "New key should be in file")
 }
 
+func TestInjectEncryptionKeyTargetsPresetSectionWhenPresent(t *testing.T) {
+	// GIVEN export credentials content that contains preset sections
+	tmpDir := t.TempDir()
+	credsPath := filepath.Join(tmpDir, "export_credentials.cfg")
+	initialContent := `[preset.0]
+script_encryption_key=""
+
+[preset.0.options]
+codesign/identity_type=0
+codesign/identity=""
+codesign/password=""
+`
+	writeErr := os.WriteFile(credsPath, []byte(initialContent), 0644)
+	assert.NoError(t, writeErr, "Should write preset-based credentials fixture")
+
+	// WHEN injecting a key
+	newKey := "70b20473a9aa77843dade0d33e770aee04293d4f88d6accc5b1518e7ea577361"
+	err := InjectEncryptionKey(credsPath, newKey)
+
+	// THEN injection should succeed
+	assert.Nil(t, err, "InjectEncryptionKey should not error for preset-based credentials")
+
+	// AND script_encryption_key should be written under preset.0
+	content, readErr := os.ReadFile(credsPath)
+	assert.NoError(t, readErr, "Should read updated credentials file")
+	contentStr := string(content)
+	assert.Contains(t, contentStr, "[preset.0]", "preset.0 section should remain present")
+	assert.Contains(t, contentStr, "script_encryption_key=\""+newKey+"\"", "Key should be injected in preset section")
+
+	// AND no fallback [encryption] section should be appended for this shape
+	assert.NotContains(t, contentStr, "[encryption]", "Should avoid appending [encryption] when preset sections exist")
+}
+
 func TestBackupOncePreservesRestorability(t *testing.T) {
 	// GIVEN a file with a pristine backup
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.cfg")
 	bakPath := filePath + ".bak"
 	originalContent := "pristine original"
-	os.WriteFile(filePath, []byte(originalContent), 0644)
-	BackupOnce(filePath)
+	writeErr := os.WriteFile(filePath, []byte(originalContent), 0644)
+	assert.NoError(t, writeErr, "Should write the original file content")
+	backupErr := BackupOnce(filePath)
+	assert.Nil(t, backupErr, "BackupOnce should create a backup for restorability testing")
 
 	// AND the file is significantly modified
 	modifiedContent := "completely different content\nwith multiple lines\nand changes"
-	os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	writeErr = os.WriteFile(filePath, []byte(modifiedContent), 0644)
+	assert.NoError(t, writeErr, "Should write the modified file content")
 
 	// WHEN checking the backup
 	bakContent, err := os.ReadFile(bakPath)
@@ -186,7 +342,8 @@ func TestBackupOncePreservesRestorability(t *testing.T) {
 	assert.Equal(t, originalContent, string(bakContent), "Backup should not be corrupted")
 
 	// WHEN restoring from backup
-	Rollback(filePath)
+	rollbackErr := Rollback(filePath)
+	assert.NoError(t, rollbackErr, "Rollback should restore the pristine backup without error")
 
 	// THEN the original content should be restored
 	restoredContent, _ := os.ReadFile(filePath)
@@ -225,17 +382,21 @@ func TestRollbackMultipleFiles(t *testing.T) {
 
 	// AND the files are created and backed up
 	for i, file := range files {
-		os.WriteFile(file, []byte("original"+string(rune(i))), 0644)
-		BackupOnce(file)
+		writeErr := os.WriteFile(file, []byte("original"+string(rune(i))), 0644)
+		assert.NoError(t, writeErr, "Should write the original file content before backing up")
+		backupErr := BackupOnce(file)
+		assert.Nil(t, backupErr, "BackupOnce should create a backup for each file")
 	}
 
 	// AND the files are modified
 	for _, file := range files {
-		os.WriteFile(file, []byte("modified content"), 0644)
+		writeErr := os.WriteFile(file, []byte("modified content"), 0644)
+		assert.NoError(t, writeErr, "Should write the modified file content before rollback")
 	}
 
 	// WHEN rolling back all files
-	Rollback(files...)
+	rollbackErr := Rollback(files...)
+	assert.NoError(t, rollbackErr, "Rollback should restore all files without error")
 
 	// THEN all files should be restored to their original content
 	for i, file := range files {

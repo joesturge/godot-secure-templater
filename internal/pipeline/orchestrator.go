@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/joemi/godot-secure-templater/internal/cleanup"
 	"github.com/joemi/godot-secure-templater/internal/config"
@@ -17,6 +18,12 @@ type Options struct {
 
 	// GodotVersion is the explicit Godot version (if supplied)
 	GodotVersion string
+
+	// GodotEditorPath points to a specific editor binary for local version detection.
+	GodotEditorPath string
+
+	// ProjectMinor is the project's declared minor line (e.g., "4.3")
+	ProjectMinor string
 
 	// Platform is the target platform (e.g., "windows")
 	Platform string
@@ -65,13 +72,10 @@ type BuildResult struct {
 type Orchestrator struct {
 	opts *Options
 
-	// Lazy-initialized coordinators
-	versionResolver *version.Resolver
-	manifestLoader  *manifest.Loader
-	pruner          *cleanup.Pruner
-	pathChecker     *longpath.Checker
-	encryptionPath  string
-	manifestPath    string
+	pruner         *cleanup.Pruner
+	pathChecker    *longpath.Checker
+	encryptionPath string
+	manifestPath   string
 }
 
 // NewOrchestrator creates a pipeline orchestrator.
@@ -99,6 +103,15 @@ func (o *Orchestrator) CheckLongPaths() ([]string, error) {
 		warnings = append(warnings, warning)
 	}
 
+	if o.opts.Platform == "windows" {
+		enabled, err := o.pathChecker.IsLongPathsEnabled()
+		if err != nil {
+			warnings = append(warnings, "warning: could not query Windows LongPathsEnabled registry state; path-length handling may be limited")
+		} else if !enabled {
+			warnings = append(warnings, "warning: Windows LongPathsEnabled is not enabled; very long paths may fail")
+		}
+	}
+
 	return warnings, nil
 }
 
@@ -107,8 +120,8 @@ func (o *Orchestrator) ResolveVersion() (*version.Resolution, error) {
 	// Create resolver with strategy chain (priority order)
 	resolver := version.NewResolver(
 		&version.ExplicitStrategy{Version: o.opts.GodotVersion},
-		&version.LocalEditorStrategy{},
-		&version.GitHubAPIStrategy{MinorVersion: ""},
+		&version.LocalEditorStrategy{EditorPath: o.opts.GodotEditorPath},
+		&version.GitHubAPIStrategy{MinorVersion: o.opts.ProjectMinor},
 		&version.InteractiveStrategy{},
 	)
 
@@ -135,7 +148,7 @@ func (o *Orchestrator) CheckIdempotency(resolution *version.Resolution, toolchai
 		return false // User requested rebuild
 	}
 
-	loader := manifest.NewLoader(o.manifestPath)
+	loader := &manifest.Loader{ManifestPath: o.manifestPath}
 
 	// Construct the current cache key
 	currentKey := &manifest.CacheKey{
@@ -165,12 +178,13 @@ func (o *Orchestrator) WriteManifest(
 		Platform:                platform,
 		ToolVersion:             toolVersion,
 		ToolchainChecksums:      toolchainChecksums,
+		Timestamp:               time.Now().UTC(),
 		Success:                 success,
 		TemplateRelease:         templateReleaseHash,
 		TemplateDebug:           templateDebugHash,
 	}
 
-	loader := manifest.NewLoader(o.manifestPath)
+	loader := &manifest.Loader{ManifestPath: o.manifestPath}
 	if err := loader.Write(m); err != nil {
 		return fmt.Errorf("failed to write manifest: %w", err)
 	}
@@ -190,7 +204,7 @@ func (o *Orchestrator) CleanupAfterSuccess() error {
 func (o *Orchestrator) GetTeammateMessage() string {
 	return `
 📋 Note for teammates:
-   The encryption key in .godot/export_credentials.cfg is machine-specific.
-   Each team member must run this tool locally on their machine to generate their own key.
-   Do NOT share encryption keys between machines.`
+	Treat the encryption key as a shared project secret.
+	Distribute it securely to team members and CI via a secrets manager.
+	Do not commit key material to source control.`
 }

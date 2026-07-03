@@ -41,7 +41,9 @@ func ReadVersion(projectPath string) (string, *internal.Error) {
 			Details: err.Error(),
 		}
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -111,7 +113,9 @@ func EnsureGitignore(projectPath string) *internal.Error {
 			Details: err.Error(),
 		}
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if len(content) > 0 && !strings.HasSuffix(string(content), "\n") {
 		if _, err := f.WriteString("\n"); err != nil {
