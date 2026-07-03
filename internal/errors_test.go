@@ -175,18 +175,19 @@ func TestErrorExitCodeContract(t *testing.T) {
 	tests := []struct {
 		code ExitCode
 		name string
+		want int
 	}{
-		{0, "ExitSuccess"},
-		{1, "ExitGenericFailure"},
-		{2, "ExitUsageError"},
-		{3, "ExitNotGodotProject"},
-		{4, "ExitVersionResolution"},
-		{5, "ExitChecksumMismatch"},
-		{6, "ExitInsufficientDisk"},
-		{7, "ExitBuildFailed"},
-		{8, "ExitConfigInjectionFailed"},
-		{9, "ExitUnsupportedGodot"},
-		{10, "ExitLockHeld"},
+		{ExitSuccess, "ExitSuccess", 0},
+		{ExitGenericFailure, "ExitGenericFailure", 1},
+		{ExitUsageError, "ExitUsageError", 2},
+		{ExitNotGodotProject, "ExitNotGodotProject", 3},
+		{ExitVersionResolution, "ExitVersionResolution", 4},
+		{ExitChecksumMismatch, "ExitChecksumMismatch", 5},
+		{ExitInsufficientDisk, "ExitInsufficientDisk", 6},
+		{ExitBuildFailed, "ExitBuildFailed", 7},
+		{ExitConfigInjectionFailed, "ExitConfigInjectionFailed", 8},
+		{ExitUnsupportedGodot, "ExitUnsupportedGodot", 9},
+		{ExitLockHeld, "ExitLockHeld", 10},
 	}
 
 	for _, tt := range tests {
@@ -194,6 +195,6 @@ func TestErrorExitCodeContract(t *testing.T) {
 		got := int(tt.code)
 
 		// THEN it should match the stable contract value
-		assert.Equal(t, got, int(tt.code), "Exit code contract should remain stable for %s", tt.name)
+		assert.Equal(t, tt.want, got, "Exit code contract should remain stable for %s", tt.name)
 	}
 }
