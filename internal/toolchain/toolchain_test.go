@@ -329,3 +329,61 @@ func TestExtractArchive_InvalidKind(t *testing.T) {
 	// THEN it should return an error
 	assert.Error(t, err, "Should error on unknown archive kind")
 }
+
+func TestEnsureSufficientDiskSpace(t *testing.T) {
+	tests := []struct {
+		name          string
+		available     uint64
+		required      uint64
+		probeErr      error
+		wantErr       bool
+		wantErrCode   internal.ExitCode
+	}{
+		{
+			name:        "enough disk space available",
+			available:   10 * 1024 * 1024 * 1024,
+			required:    5 * 1024 * 1024 * 1024,
+			wantErr:     false,
+		},
+		{
+			name:        "insufficient disk space",
+			available:   2 * 1024 * 1024 * 1024,
+			required:    5 * 1024 * 1024 * 1024,
+			wantErr:     true,
+			wantErrCode: internal.ExitInsufficientDisk,
+		},
+		{
+			name:        "disk probe failure",
+			available:   0,
+			required:    5 * 1024 * 1024 * 1024,
+			probeErr:    fmt.Errorf("statfs failed"),
+			wantErr:     true,
+			wantErrCode: internal.ExitGenericFailure,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a deterministic disk-space probe response
+			oldProbe := getAvailableDiskBytes
+			getAvailableDiskBytes = func(path string) (uint64, error) {
+				return tt.available, tt.probeErr
+			}
+			t.Cleanup(func() {
+				getAvailableDiskBytes = oldProbe
+			})
+
+			// WHEN checking for sufficient disk space
+			err := EnsureSufficientDiskSpace("/tmp", tt.required)
+
+			if tt.wantErr {
+				// THEN an error should be returned with the expected code
+				assert.NotNil(t, err, "Disk-space check should return error for failing scenarios")
+				assert.Equal(t, tt.wantErrCode, err.Code, "Error code should match expected disk-space failure mode")
+			} else {
+				// THEN no error should be returned
+				assert.Nil(t, err, "Disk-space check should succeed when available bytes exceed requirement")
+			}
+		})
+	}
+}

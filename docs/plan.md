@@ -66,7 +66,7 @@ These hold across every slice and are the reason the plan can start tiny yet gro
 | --- | --- | --- | --- |
 | **0** | Walking skeleton (MVP) | One hard-coded happy path: Windows→Windows, Godot 4.3+, explicit version, compile + wire-in, safe config/key handling | Version inference, manifest/caching, CI mode, runtime pruning, long-path prefixing, multi-era config, plugin framework |
 | **1** | Robust single-platform tool | Version resolution chain, manifest + idempotency, staged progress, cleanup, multi-era config, long-path handling, key-regen guardrails | CI/non-interactive, multi-platform |
-| **2** | CI / automation | `--non-interactive`/`--yes`, `--json`, manifest-keyed caching, secret-safe logging | Multi-platform |
+| **2** | CI / automation | `--non-interactive`/`--yes`, `--json`, manifest-keyed caching, secret-safe logging, parallel release+debug compilation | Multi-platform |
 | **3** | Multi-platform extensibility | Extract plugin registry + `Provisioner`/`EnvironmentBuilder` interfaces + host/target matrix, driven by a real 2nd target (Linux) | Web/Android/macOS/iOS specifics |
 | **4+** | Breadth & hardening | Concrete Web/Android/macOS/iOS plugins, signature verification, documented CI workflow, `list-platforms` | — |
 
@@ -250,6 +250,9 @@ Makes the tool safe to run unattended (e.g. GitHub Actions).
   `templates/` + `manifest.json` keyed on resolved Godot version + platform **+ toolchain identity**
   (per the Slice 1 idempotency key); the existing idempotency check then skips the 20–60+ min compile
   on a hit. No new caching mechanism required.
+* **Parallel release/debug compilation.** Build release and debug templates concurrently to reduce
+  wall-clock time in CI. Keep artefact names and config-injection outputs unchanged, collect logs per
+  target, and fail the run if either target fails.
 * **Explicit-version recommendation.** In non-interactive mode, prefer requiring `--godot-version`
   over the latest-patch fallback to avoid time-based drift.
 * **Stable exit-code contract.** CI needs to branch on *why* a run failed, not scrape text. Every

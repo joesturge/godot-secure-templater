@@ -18,6 +18,9 @@ type Options struct {
 	// GodotVersion is the explicit Godot version (if supplied)
 	GodotVersion string
 
+	// ProjectMinor is the project's declared minor line (e.g., "4.3")
+	ProjectMinor string
+
 	// Platform is the target platform (e.g., "windows")
 	Platform string
 
@@ -96,6 +99,15 @@ func (o *Orchestrator) CheckLongPaths() ([]string, error) {
 		warnings = append(warnings, warning)
 	}
 
+	if o.opts.Platform == "windows" {
+		enabled, err := o.pathChecker.IsLongPathsEnabled()
+		if err != nil {
+			warnings = append(warnings, "warning: could not query Windows LongPathsEnabled registry state; path-length handling may be limited")
+		} else if !enabled {
+			warnings = append(warnings, "warning: Windows LongPathsEnabled is not enabled; very long paths may fail")
+		}
+	}
+
 	return warnings, nil
 }
 
@@ -105,7 +117,7 @@ func (o *Orchestrator) ResolveVersion() (*version.Resolution, error) {
 	resolver := version.NewResolver(
 		&version.ExplicitStrategy{Version: o.opts.GodotVersion},
 		&version.LocalEditorStrategy{},
-		&version.GitHubAPIStrategy{MinorVersion: ""},
+		&version.GitHubAPIStrategy{MinorVersion: o.opts.ProjectMinor},
 		&version.InteractiveStrategy{},
 	)
 
@@ -132,7 +144,7 @@ func (o *Orchestrator) CheckIdempotency(resolution *version.Resolution, toolchai
 		return false // User requested rebuild
 	}
 
-	loader := manifest.NewLoader(o.manifestPath)
+	loader := &manifest.Loader{ManifestPath: o.manifestPath}
 
 	// Construct the current cache key
 	currentKey := &manifest.CacheKey{
@@ -167,7 +179,7 @@ func (o *Orchestrator) WriteManifest(
 		TemplateDebug:           templateDebugHash,
 	}
 
-	loader := manifest.NewLoader(o.manifestPath)
+	loader := &manifest.Loader{ManifestPath: o.manifestPath}
 	if err := loader.Write(m); err != nil {
 		return fmt.Errorf("failed to write manifest: %w", err)
 	}

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -11,10 +13,13 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/config"
 	"github.com/joemi/godot-secure-templater/internal/crypto"
+	"github.com/joemi/godot-secure-templater/internal/manifest"
 	"github.com/joemi/godot-secure-templater/internal/pipeline"
 	"github.com/joemi/godot-secure-templater/internal/project"
 	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
+
+const toolVersion = "dev"
 
 var (
 	rootCmd = &cobra.Command{
@@ -51,9 +56,6 @@ func init() {
 	createCmd.Flags().BoolVar(&flagRegenerateKey, "regenerate-key", false, "Generate new encryption key (requires confirmation unless --force)")
 	createCmd.Flags().BoolVar(&flagForce, "force", false, "Skip all confirmations (for automation/CI)")
 	createCmd.Flags().BoolVar(&flagVerbose, "verbose", false, "Verbose output")
-	if err := createCmd.MarkFlagRequired("godot-version"); err != nil {
-		panic(fmt.Sprintf("failed to configure required flag godot-version: %v", err))
-	}
 
 	rootCmd.AddCommand(createCmd)
 }
@@ -101,12 +103,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	logger.Info("Project targets Godot %s", projectMinor)
 
-	// Validate the supplied version against the project's minor line.
-	if err := project.ValidateMinorLine(projectMinor, flagGodotVersion); err != nil {
-		return err
-	}
-	logger.Info("Version validated: %s", flagGodotVersion)
-
 	// Ensure .gst/ workspace exists.
 	logger.Info("Initializing workspace...")
 	workspace, wsErr := project.InitWorkspace(projectRoot)
@@ -120,6 +116,14 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		logger.Warn("Could not update .gitignore: %v", err)
 	}
 
+	// Acquire lock to prevent concurrent runs mutating the same workspace.
+	releaseLock, lockErr := acquireRunLock(workspace.Lock)
+	if lockErr != nil {
+		logger.Error("Failed to acquire run lock: %v", lockErr)
+		return lockErr
+	}
+	defer releaseLock()
+
 	// ============================================================================
 	// BUILD PIPELINE ORCHESTRATOR
 	// ============================================================================
@@ -128,6 +132,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	opts := &pipeline.Options{
 		ProjectRoot:   projectRoot,
 		GodotVersion:  flagGodotVersion,
+		ProjectMinor:  projectMinor,
 		Platform:      "windows", // Hard-wired in Slice 0; Slice 3 will extend.
 		KeepRuntime:   flagKeepRuntime,
 		ForceRebuild:  flagForceRebuild,
@@ -163,6 +168,11 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	logger.Info("Resolved version %s via %s (%s)", resolution.Version, resolution.Method, resolution.Source)
 
+	if err := project.ValidateMinorLine(projectMinor, resolution.Version); err != nil {
+		return err
+	}
+	logger.Info("Version validated against project minor line: %s", resolution.Version)
+
 	// ============================================================================
 	// PHASE 3: DETERMINE CONFIG ERA
 	// ============================================================================
@@ -175,24 +185,24 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	logger.Info("Configuration era: %v", era)
 
+	components := toolchain.WindowsComponents(resolution.Version)
+	toolchainChecksums := buildToolchainChecksums(components)
+
 	// ============================================================================
 	// PHASE 4: CHECK IDEMPOTENCY
 	// ============================================================================
 
-	// [TODO] Compute toolchain checksums and tool version (Slice 2).
-	// For now, always rebuild (treat ForceRebuild as default in Slice 1).
 	canSkip := false
 	if !flagForceRebuild {
-		// canSkip = orch.CheckIdempotency(resolution, checksums, toolVersion)
-		logger.Info("(Idempotency check deferred to Slice 2; always rebuilding)")
+		canSkip = orch.CheckIdempotency(resolution, toolchainChecksums, toolVersion)
+		if canSkip {
+			logger.Info("Cache hit! Skipping rebuild.")
+			logger.Info(orch.GetTeammateMessage())
+			return nil
+		}
+		logger.Info("No matching manifest cache key found; continuing with rebuild")
 	} else {
 		logger.Info("Force rebuild requested; skipping cache check")
-	}
-
-	if canSkip {
-		logger.Info("Cache hit! Skipping rebuild.")
-		logger.Info(orch.GetTeammateMessage())
-		return nil
 	}
 
 	// ============================================================================
@@ -203,7 +213,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		ProjectRoot: projectRoot,
 		Workspace:   workspace,
 		Godot: &internal.ResolvedVersion{
-			Patch:  flagGodotVersion,
+			Patch:  resolution.Version,
 			Minor:  projectMinor,
 			Method: string(resolution.Method),
 			Source: resolution.Source,
@@ -228,7 +238,13 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		if !flagForce {
 			logger.Warn("Regenerating encryption key invalidates prior builds that embedded the old key.")
 			logger.Warn("This key is MACHINE-SPECIFIC; each teammate must regenerate on their machine.")
-			// [TODO] Interactive confirmation: "Proceed? (y/n)"
+			confirmed, confirmErr := confirmRegenerateKey()
+			if confirmErr != nil {
+				return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to read confirmation input.", Details: confirmErr.Error()}
+			}
+			if !confirmed {
+				return &internal.Error{Code: internal.ExitGenericFailure, Message: "Key regeneration cancelled by user."}
+			}
 		}
 		logger.Info("Removing old key to trigger regeneration...")
 		if removeErr := os.Remove(workspace.KeyFile); removeErr != nil && !os.IsNotExist(removeErr) {
@@ -248,7 +264,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	logger.Info("Provisioning toolchain...")
-	components := toolchain.WindowsComponents(flagGodotVersion)
 	if err := toolchain.Provision(ctx, components); err != nil {
 		return err
 	}
@@ -276,7 +291,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	credsPath := filepath.Join(projectRoot, ".godot", "export_credentials.cfg")
+	credsPath, credPathErr := config.CredentialPath(projectRoot, era)
+	if credPathErr != nil {
+		return &internal.Error{Code: internal.ExitUnsupportedGodot, Message: "Could not determine credential path for this Godot version.", Details: credPathErr.Error()}
+	}
 	if err := config.InjectEncryptionKey(credsPath, key); err != nil {
 		logger.Error("Credential injection failed: %v", err)
 		return err
@@ -287,17 +305,29 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	logger.Info("Recording build manifest...")
-	// [TODO] Compute checksums and write manifest via orchestrator.
-	// manifest := &manifest.Manifest{
-	//   GodotVersion: resolution.Version,
-	//   VersionResolutionMethod: resolution.Method,
-	//   Platform: opts.Platform,
-	//   ...
-	// }
-	// if err := orch.WriteManifest(manifest); err != nil {
-	//   logger.Error("Manifest write failed: %v", err)
-	//   return err
-	// }
+	releaseTemplatePath := filepath.Join(workspace.Templates, "windows_template_release.exe")
+	debugTemplatePath := filepath.Join(workspace.Templates, "windows_template_debug.exe")
+	releaseHash, releaseHashErr := manifest.ComputeFileHash(releaseTemplatePath)
+	if releaseHashErr != nil {
+		return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to hash release template for manifest.", Details: releaseHashErr.Error()}
+	}
+	debugHash, debugHashErr := manifest.ComputeFileHash(debugTemplatePath)
+	if debugHashErr != nil {
+		return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to hash debug template for manifest.", Details: debugHashErr.Error()}
+	}
+
+	if err := orch.WriteManifest(
+		resolution,
+		opts.Platform,
+		toolchainChecksums,
+		toolVersion,
+		true,
+		releaseHash,
+		debugHash,
+	); err != nil {
+		logger.Error("Manifest write failed: %v", err)
+		return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to write build manifest.", Details: err.Error()}
+	}
 
 	logger.Info("Cleaning up build artifacts...")
 	if err := orch.CleanupAfterSuccess(); err != nil {
@@ -320,4 +350,68 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	logger.Info("")
 
 	return nil
+}
+
+func buildToolchainChecksums(components []internal.Artifact) map[string]string {
+	checksums := make(map[string]string)
+	for _, component := range components {
+		checksums[component.Name] = component.SHA256
+	}
+	return checksums
+}
+
+func confirmRegenerateKey() (bool, error) {
+	if _, err := fmt.Fprint(os.Stdout, "Proceed with key regeneration? (y/N): "); err != nil {
+		return false, err
+	}
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, err
+	}
+
+	trimmed := strings.ToLower(strings.TrimSpace(input))
+	return trimmed == "y" || trimmed == "yes", nil
+}
+
+func acquireRunLock(lockPath string) (func(), *internal.Error) {
+	hostname, hostErr := os.Hostname()
+	if hostErr != nil {
+		hostname = "unknown"
+	}
+
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		if os.IsExist(err) {
+			pid := "unknown"
+			host := "unknown"
+			if data, readErr := os.ReadFile(lockPath); readErr == nil {
+				for _, line := range strings.Split(string(data), "\n") {
+					if strings.HasPrefix(line, "pid=") {
+						pid = strings.TrimPrefix(line, "pid=")
+					}
+					if strings.HasPrefix(line, "host=") {
+						host = strings.TrimPrefix(line, "host=")
+					}
+				}
+			}
+			return nil, internal.ErrLockHeld(pid, host)
+		}
+
+		return nil, &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to create run lock.", Details: err.Error()}
+	}
+
+	lockContents := fmt.Sprintf("pid=%d\nhost=%s\n", os.Getpid(), hostname)
+	if _, writeErr := lockFile.WriteString(lockContents); writeErr != nil {
+		_ = lockFile.Close()
+		_ = os.Remove(lockPath)
+		return nil, &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to write run lock metadata.", Details: writeErr.Error()}
+	}
+
+	release := func() {
+		_ = lockFile.Close()
+		_ = os.Remove(lockPath)
+	}
+
+	return release, nil
 }

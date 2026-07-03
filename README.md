@@ -96,17 +96,12 @@ The resulting binary runs on any machine with that OS/architecture—no addition
 cd /path/to/your/game
 ```
 
-Ensure your project has a `project.godot` with:
-```ini
-[application]
-
-config/version="4.3.2"
-```
+Ensure your project has a `project.godot` file
 
 ### 2. Run gst
 
 ```bash
-gst create --godot-version 4.3.2
+gst create
 ```
 
 **Flags:**

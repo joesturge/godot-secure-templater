@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
+	"github.com/joemi/godot-secure-templater/internal/longpath"
+	"github.com/joemi/godot-secure-templater/internal/progress"
 )
 
 // BuildTarget represents a build variant.
@@ -153,6 +155,17 @@ func compileSingle(ctx *internal.RunContext, target BuildTarget, env map[string]
 			Message: fmt.Sprintf("Python executable not found at %s", pythonExe),
 			Details: err.Error(),
 		}
+	}
+
+	checker := longpath.NewChecker("windows")
+	if checker.NeedsPrefixing(godotSrc) {
+		godotSrc = checker.ExtendedLengthPath(godotSrc)
+	}
+	if checker.NeedsPrefixing(sconsExe) && sconsExe != "python_module_scons" {
+		sconsExe = checker.ExtendedLengthPath(sconsExe)
+	}
+	if checker.NeedsPrefixing(pythonExe) {
+		pythonExe = checker.ExtendedLengthPath(pythonExe)
 	}
 
 	ctx.Logger.Debug("Using Python: %s", pythonExe)
@@ -311,8 +324,20 @@ func makeEnv(overrides map[string]string) []string {
 // streamOutput reads from a pipe and logs each line.
 func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.ReadCloser, isError bool) {
 	scanner := bufio.NewScanner(reader)
+	parser := progress.NewParser()
+	lastStage := progress.StageUnknown
+
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		if !isError {
+			stage := parser.ParseLine(line)
+			if stage != lastStage {
+				logger.Info(progress.FormatStageUpdate(stage))
+				lastStage = stage
+			}
+		}
+
 		if isError {
 			// For stderr, use a different logging level if available
 			// For now, just log as info with a prefix

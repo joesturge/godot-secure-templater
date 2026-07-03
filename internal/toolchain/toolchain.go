@@ -121,6 +121,10 @@ func fetchGodotChecksumFromGitHub(version string) string {
 func Provision(ctx *internal.RunContext, components []internal.Artifact) *internal.Error {
 	ctx.Logger.Info("Provisioning toolchain for Godot %s...", ctx.Godot.Patch)
 
+	if err := EnsureSufficientDiskSpace(ctx.Workspace.Root, minimumRequiredDiskBytes); err != nil {
+		return err
+	}
+
 	for _, art := range components {
 		ctx.Logger.Info("  → %s", art.Name)
 
