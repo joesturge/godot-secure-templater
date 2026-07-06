@@ -4,17 +4,17 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/joemi/godot-secure-templater/internal"
-	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/cleanup"
-	"github.com/joemi/godot-secure-templater/internal/config"
 	"github.com/joemi/godot-secure-templater/internal/crypto"
 	"github.com/joemi/godot-secure-templater/internal/manifest"
+	"github.com/joemi/godot-secure-templater/internal/platform"
+	_ "github.com/joemi/godot-secure-templater/internal/platforms/linux"
+	_ "github.com/joemi/godot-secure-templater/internal/platforms/windows"
 	"github.com/joemi/godot-secure-templater/internal/pipeline"
 	"github.com/joemi/godot-secure-templater/internal/project"
 	"github.com/joemi/godot-secure-templater/internal/toolchain"
@@ -49,17 +49,19 @@ export configuration. Requires --godot-version in Slice 0.`,
 	}
 
 	// Flags.
-	flagGodotVersion  string
+	flagGodotVersion    string
+	flagPlatform        string
 	flagGodotEditorPath string
-	flagKeepRuntime   bool
-	flagForceRebuild  bool
-	flagRegenerateKey bool
-	flagForce         bool
-	flagVerbose       bool
+	flagKeepRuntime     bool
+	flagForceRebuild    bool
+	flagRegenerateKey   bool
+	flagForce           bool
+	flagVerbose         bool
 )
 
 func init() {
 	createCmd.Flags().StringVar(&flagGodotVersion, "godot-version", "", "Godot version (required, e.g., 4.3.2)")
+	createCmd.Flags().StringVar(&flagPlatform, "platform", detectedHostTuple(), "Target platform tuple (default: detected host tuple, e.g., windows/amd64)")
 	createCmd.Flags().StringVar(&flagGodotEditorPath, "godot-editor-path", "", "Path to Godot editor binary used for local version resolution")
 	createCmd.Flags().BoolVar(&flagKeepRuntime, "keep-runtime", false, "Keep toolchain runtime after successful build")
 	createCmd.Flags().BoolVar(&flagForceRebuild, "force-rebuild", false, "Skip idempotency check; always rebuild")
@@ -87,6 +89,18 @@ func main() {
 
 func runCreate(cmd *cobra.Command, args []string) error {
 	logger := internal.NewSimpleLogger(flagVerbose)
+	hostTuple := detectedHostTuple()
+
+	targetTuple, targetPlatform, platformErr := resolveTargetPlatform(flagPlatform)
+	if platformErr != nil {
+		return platformErr
+	}
+	platformDef, ok := platform.Lookup(targetPlatform)
+	if !ok {
+		return internal.ErrUnknownPlatform(targetPlatform)
+	}
+	logger.Info("Host tuple: %s", hostTuple)
+	logger.Info("Target tuple: %s", targetTuple)
 
 	// ============================================================================
 	// PREFLIGHT: Detect project, validate version, init workspace
@@ -135,6 +149,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	defer releaseLock()
 
+	if err := platform.ValidateHostSupport(platformDef, hostTuple); err != nil {
+		return err
+	}
+
 	// ============================================================================
 	// BUILD PIPELINE ORCHESTRATOR
 	// ============================================================================
@@ -145,7 +163,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		GodotVersion:  flagGodotVersion,
 		GodotEditorPath: flagGodotEditorPath,
 		ProjectMinor:  projectMinor,
-		Platform:      "windows", // Hard-wired in Slice 0; Slice 3 will extend.
+		Platform:      targetPlatform,
 		KeepRuntime:   flagKeepRuntime,
 		ForceRebuild:  flagForceRebuild,
 		RegenerateKey: flagRegenerateKey,
@@ -185,19 +203,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	logger.Info("Version validated against project minor line: %s", resolution.Version)
 
-	// ============================================================================
-	// PHASE 3: DETERMINE CONFIG ERA
-	// ============================================================================
-
-	logger.Info("Determining configuration era...")
-	era, err := orch.DetermineConfigEra(resolution.Version)
-	if err != nil {
-		logger.Error("Era determination failed: %v", err)
-		return err
+	components, componentsErr := platformDef.Components(resolution.Version)
+	if componentsErr != nil {
+		return componentsErr
 	}
-	logger.Info("Configuration era: %v", era)
-
-	components := toolchain.WindowsComponents(resolution.Version)
 	toolchainChecksums := buildToolchainChecksums(components)
 
 	// ============================================================================
@@ -220,7 +229,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 				return keyErr
 			}
 
-			if err := applyProjectConfig(projectRoot, workspace, era, key, logger); err != nil {
+			if err := platformDef.ConfigureProject(projectRoot, workspace, resolution.Version, key, logger); err != nil {
 				logger.Error("Config injection failed on cache hit: %v", err)
 				return err
 			}
@@ -246,7 +255,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		},
 		Flags: &internal.Flags{
 			GodotVersion: flagGodotVersion,
-			Platform:     "windows",
+			Platform:     targetPlatform,
 			KeepRuntime:  flagKeepRuntime,
 			Interactive:  !flagForce,
 		},
@@ -299,7 +308,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	logger.Info("Compiling templates...")
-	if err := builder.CompileTemplates(ctx, key); err != nil {
+	if err := platformDef.Compile(ctx, key); err != nil {
 		return err
 	}
 
@@ -308,7 +317,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	logger.Info("Injecting configuration...")
-	if err := applyProjectConfig(projectRoot, workspace, era, key, logger); err != nil {
+	if err := platformDef.ConfigureProject(projectRoot, workspace, resolution.Version, key, logger); err != nil {
 		logger.Error("Config injection failed: %v", err)
 		return err
 	}
@@ -318,8 +327,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	logger.Info("Recording build manifest...")
-	releaseTemplatePath := filepath.Join(workspace.Templates, "windows_template_release.exe")
-	debugTemplatePath := filepath.Join(workspace.Templates, "windows_template_debug.exe")
+	releaseTemplatePath, debugTemplatePath := platformDef.ArtifactPaths(workspace)
 	releaseHash, releaseHashErr := manifest.ComputeFileHash(releaseTemplatePath)
 	if releaseHashErr != nil {
 		return &internal.Error{Code: internal.ExitGenericFailure, Message: "Failed to hash release template for manifest.", Details: releaseHashErr.Error()}
@@ -357,9 +365,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	logger.Info(orch.GetTeammateMessage())
 	logger.Info("")
 	logger.Info("Next steps:")
-	logger.Info("  1. Open your project in the Godot Editor")
-	logger.Info("  2. Go to Project → Export")
-	logger.Info("  3. Export your game using the Windows preset")
+	nextSteps := platformDef.SuccessNextSteps()
+	for i, step := range nextSteps {
+		logger.Info("  %d. %s", i+1, step)
+	}
 	logger.Info("")
 
 	return nil
@@ -396,28 +405,6 @@ func buildToolchainChecksums(components []internal.Artifact) map[string]string {
 	return checksums
 }
 
-func applyProjectConfig(projectRoot string, workspace *internal.Workspace, era config.Era, key string, logger internal.Logger) *internal.Error {
-	presetsPath := filepath.Join(projectRoot, "export_presets.cfg")
-	if err := config.InjectWindowsTemplate(
-		presetsPath,
-		filepath.Join(workspace.Templates, "windows_template_release.exe"),
-		filepath.Join(workspace.Templates, "windows_template_debug.exe"),
-	); err != nil {
-		return err
-	}
-
-	credsPath, credPathErr := config.CredentialPath(projectRoot, era)
-	if credPathErr != nil {
-		return &internal.Error{Code: internal.ExitUnsupportedGodot, Message: "Could not determine credential path for this Godot version.", Details: credPathErr.Error()}
-	}
-	if err := config.InjectEncryptionKey(credsPath, key); err != nil {
-		logger.Error("Credential injection failed: %v", err)
-		return err
-	}
-
-	return nil
-}
-
 func confirmRegenerateKey() (bool, error) {
 	if _, err := fmt.Fprint(os.Stdout, "Proceed with key regeneration? (y/N): "); err != nil {
 		return false, err
@@ -430,6 +417,22 @@ func confirmRegenerateKey() (bool, error) {
 
 	trimmed := strings.ToLower(strings.TrimSpace(input))
 	return trimmed == "y" || trimmed == "yes", nil
+}
+
+func detectedHostTuple() string {
+	return platform.DetectHostTuple()
+}
+
+func resolveTargetPlatform(raw string) (string, string, *internal.Error) {
+	tuple, err := platform.ResolveTargetTuple(raw, detectedHostTuple())
+	if err != nil {
+		return tuple, "", err
+	}
+	platformID := platform.PlatformIDFromTuple(tuple)
+	if _, ok := platform.Lookup(platformID); !ok {
+		return tuple, "", internal.ErrUnknownPlatform(platformID)
+	}
+	return tuple, platformID, nil
 }
 
 func acquireRunLock(lockPath string) (func(), *internal.Error) {

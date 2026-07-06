@@ -170,6 +170,62 @@ func TestErrorUnsupportedGodotFactory(t *testing.T) {
 	assert.Contains(t, err.Message, version, "Message should contain unsupported version")
 }
 
+func TestErrorUnsupportedPlatformTupleFactory(t *testing.T) {
+	// GIVEN a platform tuple that is not currently supported
+	tuple := "linux/amd64"
+
+	// WHEN creating an unsupported platform tuple error
+	err := ErrUnsupportedPlatformTuple(tuple)
+
+	// THEN the error should have the usage error exit code
+	assert.Equal(t, ExitUsageError, err.Code, "Exit code should be ExitUsageError")
+	// AND the tuple should be included in the message
+	assert.Contains(t, err.Message, tuple, "Message should contain the unsupported tuple")
+	// AND details should document the currently supported tuple
+	assert.Contains(t, err.Details, "windows/amd64", "Details should include the currently supported tuple")
+}
+
+func TestErrorUnknownPlatformFactory(t *testing.T) {
+	// GIVEN a platform id with no registered plugin
+	platformID := "beos"
+
+	// WHEN creating an unknown platform error
+	err := ErrUnknownPlatform(platformID)
+
+	// THEN the error should have usage-error semantics
+	assert.Equal(t, ExitUsageError, err.Code, "Unknown platform should map to usage error exit code")
+	// AND the platform id should appear in the message
+	assert.Contains(t, err.Message, platformID, "Error message should include unknown platform id")
+}
+
+func TestErrorHostTargetUnsupportedFactory(t *testing.T) {
+	// GIVEN an incompatible host-target tuple pair
+	host := "linux/amd64"
+	target := "windows/amd64"
+
+	// WHEN creating a host-target compatibility error
+	err := ErrHostTargetUnsupported(host, target)
+
+	// THEN the error should have usage-error semantics
+	assert.Equal(t, ExitUsageError, err.Code, "Incompatible host-target tuple should map to usage error")
+	// AND details should include both host and target tuples
+	assert.Contains(t, err.Message, host, "Message should include host tuple")
+	assert.Contains(t, err.Message, target, "Message should include target tuple")
+}
+
+func TestErrorPlatformNotImplementedFactory(t *testing.T) {
+	// GIVEN a registered but not-yet-implemented platform id
+	platformID := "linux"
+
+	// WHEN creating a not-implemented platform error
+	err := ErrPlatformNotImplemented(platformID)
+
+	// THEN the error should have usage-error semantics
+	assert.Equal(t, ExitUsageError, err.Code, "Not-implemented platform should map to usage error exit code")
+	// AND the platform id should be included for diagnostics
+	assert.Contains(t, err.Message, platformID, "Message should include platform id")
+}
+
 func TestErrorExitCodeContract(t *testing.T) {
 	// GIVEN all error exit codes defined in the system
 	tests := []struct {

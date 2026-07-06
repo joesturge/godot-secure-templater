@@ -111,4 +111,36 @@ var (
 			Details: fmt.Sprintf("PID: %s, Host: %s. Wait for it to finish or remove .gst/.lock if stale.", pid, host),
 		}
 	}
+
+	ErrUnsupportedPlatformTuple = func(tuple string) *Error {
+		return &Error{
+			Code:    ExitUsageError,
+			Message: fmt.Sprintf("Unsupported platform tuple: %s", tuple),
+			Details: "Currently supported target tuple: windows/amd64. This value defaults to detected host tuple (GOOS/GOARCH).",
+		}
+	}
+
+	ErrUnknownPlatform = func(platformID string) *Error {
+		return &Error{
+			Code:    ExitUsageError,
+			Message: fmt.Sprintf("Unknown platform: %s", platformID),
+			Details: "No platform plugin is registered for the requested target.",
+		}
+	}
+
+	ErrHostTargetUnsupported = func(hostTuple, targetTuple string) *Error {
+		return &Error{
+			Code:    ExitUsageError,
+			Message: fmt.Sprintf("Host tuple %s cannot build target %s", hostTuple, targetTuple),
+			Details: "Select a compatible host/target pair or add support for this tuple in the platform registry.",
+		}
+	}
+
+	ErrPlatformNotImplemented = func(platformID string) *Error {
+		return &Error{
+			Code:    ExitUsageError,
+			Message: fmt.Sprintf("Platform %s is registered but not yet implemented", platformID),
+			Details: "The platform exists in the registry, but build/provision logic has not been implemented yet.",
+		}
+	}
 )
