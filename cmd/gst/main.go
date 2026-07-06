@@ -36,7 +36,7 @@ this tool handles everything in an isolated .gst/ workspace.`,
 	createCmd = &cobra.Command{
 		Use:   "create",
 		Short: "Create and wire in encrypted export templates",
-		Long: `Compile encrypted Godot export templates from source and wire them into the project's
+		Long: `Compile encrypted Godot export templates from source and guide manual wiring into the project's
 export configuration. Requires --godot-version in Slice 0.`,
 		RunE: runCreate,
 	}
@@ -221,7 +221,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	} else {
 		canSkip = orch.CheckIdempotency(resolution, toolchainChecksums, toolVersion)
 		if canSkip {
-			logger.Info("Cache hit! Skipping rebuild and reapplying project configuration.")
+			logger.Info("Cache hit! Skipping rebuild and reprinting setup guidance.")
 
 			key, keyErr := crypto.EnsureKey(workspace.KeyFile)
 			if keyErr != nil {
@@ -360,7 +360,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// SUCCESS & TEAMMATE MESSAGE
 	// ============================================================================
 
-	logger.Info("Success! Encrypted templates compiled and configured.")
+	logger.Info("Success! Encrypted templates compiled.")
 	logger.Info("")
 	logger.Info(orch.GetTeammateMessage())
 	logger.Info("")

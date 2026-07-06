@@ -1,7 +1,6 @@
 package windows
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -64,8 +63,6 @@ func TestWindowsPluginConfigureProject(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	workspace := &internal.Workspace{Templates: filepath.Join(tmpDir, ".gst", "templates")}
-	err := os.MkdirAll(workspace.Templates, 0755)
-	assert.NoError(t, err, "Windows configure-project test should create template directory")
 
 	key := "abcdef0123456789"
 	logger := internal.NewSimpleLogger(false)
@@ -73,22 +70,12 @@ func TestWindowsPluginConfigureProject(t *testing.T) {
 	// WHEN applying plugin-specific project configuration
 	configureErr := def.ConfigureProject(tmpDir, workspace, "4.6.3", key, logger)
 
-	// THEN configuration injection should succeed
-	assert.Nil(t, configureErr, "Windows configure-project callback should inject templates and credentials")
+	// THEN configuration injection should be a no-op in manual setup mode
+	assert.Nil(t, configureErr, "Windows configure-project callback should not mutate project config in manual mode")
 
-	// AND export presets should include injected template keys
-	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
-	presetsData, presetsReadErr := os.ReadFile(presetsPath)
-	assert.NoError(t, presetsReadErr, "Windows configure-project should create export_presets.cfg")
-	presets := string(presetsData)
-	assert.Contains(t, presets, "custom_template/release=", "Windows configure-project should inject release template key")
-	assert.Contains(t, presets, "custom_template/debug=", "Windows configure-project should inject debug template key")
-
-	// AND credentials should include encryption key
-	credsPath := filepath.Join(tmpDir, ".godot", "export_credentials.cfg")
-	credsData, credsReadErr := os.ReadFile(credsPath)
-	assert.NoError(t, credsReadErr, "Windows configure-project should create credentials file")
-	assert.Contains(t, string(credsData), key, "Windows configure-project should inject encryption key")
+	// AND no export config files should be created by the plugin
+	assert.NoFileExists(t, filepath.Join(tmpDir, "export_presets.cfg"), "Windows configure-project should not create export_presets.cfg in manual mode")
+	assert.NoFileExists(t, filepath.Join(tmpDir, ".godot", "export_credentials.cfg"), "Windows configure-project should not create export_credentials.cfg in manual mode")
 }
 
 func TestWindowsPluginArtifactPaths(t *testing.T) {
@@ -117,4 +104,6 @@ func TestWindowsPluginSuccessNextSteps(t *testing.T) {
 	// THEN plugin should provide non-empty, windows-specific steps
 	assert.NotEmpty(t, steps, "Windows plugin should provide at least one success next step")
 	assert.Contains(t, steps[0], "Godot Editor", "Windows success steps should guide the user in the editor flow")
+	assert.Contains(t, steps[2], "windows_template_release.exe", "Windows success steps should mention the release template path")
+	assert.Contains(t, steps[4], "encryption.key", "Windows success steps should mention the key file path")
 }
