@@ -223,18 +223,12 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		if canSkip {
 			logger.Info("Cache hit! Skipping rebuild and reprinting setup guidance.")
 
-			key, keyErr := crypto.EnsureKey(workspace.KeyFile)
-			if keyErr != nil {
-				logger.Error("EnsureKey failed: %v", keyErr)
-				return keyErr
-			}
-
-			if err := platformDef.ConfigureProject(projectRoot, workspace, resolution.Version, key, logger); err != nil {
-				logger.Error("Config injection failed on cache hit: %v", err)
-				return err
-			}
-
 			logger.Info(orch.GetTeammateMessage())
+			logger.Info("Next steps:")
+			nextSteps := platformDef.SuccessNextSteps()
+			for i, step := range nextSteps {
+				logger.Info("  %d. %s", i+1, step)
+			}
 			return nil
 		}
 		logger.Info("No matching manifest cache key found; continuing with rebuild")
@@ -260,8 +254,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			Interactive:  !flagForce,
 		},
 		Logger: logger,
-		Clock:  nil, // [TODO] Inject for testability.
-		HTTP:   nil, // [TODO] Inject for testability.
 	}
 
 	// ============================================================================
@@ -313,17 +305,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// ============================================================================
-	// PHASE 8: CONFIG INJECTION
-	// ============================================================================
-
-	logger.Info("Injecting configuration...")
-	if err := platformDef.ConfigureProject(projectRoot, workspace, resolution.Version, key, logger); err != nil {
-		logger.Error("Config injection failed: %v", err)
-		return err
-	}
-
-	// ============================================================================
-	// PHASE 9: WRITE MANIFEST & CLEANUP
+	// PHASE 8: WRITE MANIFEST & CLEANUP
 	// ============================================================================
 
 	logger.Info("Recording build manifest...")

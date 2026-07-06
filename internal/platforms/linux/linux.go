@@ -21,9 +21,6 @@ func init() {
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
 			return internal.ErrPlatformNotImplemented("linux")
 		},
-		ConfigureProject: func(projectRoot string, workspace *internal.Workspace, version string, key string, logger internal.Logger) *internal.Error {
-			return internal.ErrPlatformNotImplemented("linux")
-		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 			return filepath.Join(workspace.Templates, "linux_template_release"), filepath.Join(workspace.Templates, "linux_template_debug")
 		},

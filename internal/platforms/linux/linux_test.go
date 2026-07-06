@@ -24,7 +24,6 @@ func TestLinuxPluginRegistersDefinition(t *testing.T) {
 	// AND required callbacks should be available
 	assert.NotNil(t, def.Components, "Linux platform should provide a component resolver callback")
 	assert.NotNil(t, def.Compile, "Linux platform should provide a compile callback")
-	assert.NotNil(t, def.ConfigureProject, "Linux platform should provide a configure-project callback")
 	assert.NotNil(t, def.ArtifactPaths, "Linux platform should provide artifact-path resolver callback")
 	assert.NotNil(t, def.SuccessNextSteps, "Linux platform should provide success-next-steps callback")
 
@@ -44,7 +43,6 @@ func TestLinuxPluginReturnsNotImplemented(t *testing.T) {
 	components, componentsErr := def.Components("4.6.3")
 	compileErr := def.Compile(nil, "")
 	templatesDir := filepath.Join("/tmp", "project", ".gst", "templates")
-	configureErr := def.ConfigureProject(filepath.Join("/tmp", "project"), &internal.Workspace{Templates: templatesDir}, "4.6.3", "", internal.NewSimpleLogger(false))
 	releasePath, debugPath := def.ArtifactPaths(&internal.Workspace{Templates: templatesDir})
 
 	// THEN components should fail with typed not-implemented error
@@ -57,11 +55,6 @@ func TestLinuxPluginReturnsNotImplemented(t *testing.T) {
 	assert.NotNil(t, compileErr, "Linux compile callback should return typed not-implemented error")
 	assert.Equal(t, internal.ExitUsageError, compileErr.Code, "Linux compile callback should use usage-error exit code while unimplemented")
 	assert.Contains(t, compileErr.Message, "not yet implemented", "Linux compile callback should mention not-yet-implemented status")
-
-	// AND configure-project should return typed not-implemented error
-	assert.NotNil(t, configureErr, "Linux configure-project callback should return typed not-implemented error")
-	assert.Equal(t, internal.ExitUsageError, configureErr.Code, "Linux configure-project callback should use usage-error exit code while unimplemented")
-	assert.Contains(t, configureErr.Message, "not yet implemented", "Linux configure-project callback should mention not-yet-implemented status")
 
 	// AND artifact paths should resolve deterministically for manifest hashing
 	assert.Equal(t, filepath.Join("/tmp", "project", ".gst", "templates", "linux_template_release"), releasePath, "Linux release artifact path should use deterministic filename")

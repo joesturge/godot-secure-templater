@@ -22,9 +22,6 @@ func init() {
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
 			return builder.CompileTemplates(ctx, key)
 		},
-		ConfigureProject: func(projectRoot string, workspace *internal.Workspace, version string, key string, logger internal.Logger) *internal.Error {
-			return nil
-		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 			return filepath.Join(workspace.Templates, "windows_template_release.exe"), filepath.Join(workspace.Templates, "windows_template_debug.exe")
 		},

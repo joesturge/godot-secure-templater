@@ -24,7 +24,6 @@ func TestWindowsPluginRegistersDefinition(t *testing.T) {
 	// AND required callbacks should be available
 	assert.NotNil(t, def.Components, "Windows platform should provide a component resolver callback")
 	assert.NotNil(t, def.Compile, "Windows platform should provide a compile callback")
-	assert.NotNil(t, def.ConfigureProject, "Windows platform should provide a configure-project callback")
 	assert.NotNil(t, def.ArtifactPaths, "Windows platform should provide artifact-path resolver callback")
 	assert.NotNil(t, def.SuccessNextSteps, "Windows platform should provide success-next-steps callback")
 
@@ -54,28 +53,6 @@ func TestWindowsPluginComponents(t *testing.T) {
 	assert.True(t, names["mingw"], "Windows component list should include mingw artifact")
 	assert.True(t, names["scons"], "Windows component list should include scons artifact")
 	assert.True(t, names["godot_source"], "Windows component list should include godot_source artifact")
-}
-
-func TestWindowsPluginConfigureProject(t *testing.T) {
-	// GIVEN a temporary project and workspace layout
-	def, ok := platform.Lookup("windows")
-	assert.True(t, ok, "Windows platform should exist in registry for configure-project tests")
-
-	tmpDir := t.TempDir()
-	workspace := &internal.Workspace{Templates: filepath.Join(tmpDir, ".gst", "templates")}
-
-	key := "abcdef0123456789"
-	logger := internal.NewSimpleLogger(false)
-
-	// WHEN applying plugin-specific project configuration
-	configureErr := def.ConfigureProject(tmpDir, workspace, "4.6.3", key, logger)
-
-	// THEN configuration injection should be a no-op in manual setup mode
-	assert.Nil(t, configureErr, "Windows configure-project callback should not mutate project config in manual mode")
-
-	// AND no export config files should be created by the plugin
-	assert.NoFileExists(t, filepath.Join(tmpDir, "export_presets.cfg"), "Windows configure-project should not create export_presets.cfg in manual mode")
-	assert.NoFileExists(t, filepath.Join(tmpDir, ".godot", "export_credentials.cfg"), "Windows configure-project should not create export_credentials.cfg in manual mode")
 }
 
 func TestWindowsPluginArtifactPaths(t *testing.T) {

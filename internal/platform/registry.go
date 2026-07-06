@@ -15,7 +15,6 @@ type Definition struct {
 	SupportedHostTuples map[string]struct{}
 	Components          func(version string) ([]internal.Artifact, *internal.Error)
 	Compile             func(ctx *internal.RunContext, key string) *internal.Error
-	ConfigureProject    func(projectRoot string, workspace *internal.Workspace, version string, key string, logger internal.Logger) *internal.Error
 	ArtifactPaths       func(workspace *internal.Workspace) (releasePath string, debugPath string)
 	SuccessNextSteps    func() []string
 }
@@ -39,9 +38,6 @@ func Register(def Definition) {
 	}
 	if def.Compile == nil {
 		panic("platform.Register: compiler callback is nil")
-	}
-	if def.ConfigureProject == nil {
-		panic("platform.Register: configure-project callback is nil")
 	}
 	if def.ArtifactPaths == nil {
 		panic("platform.Register: artifact-path callback is nil")

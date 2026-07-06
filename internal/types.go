@@ -1,10 +1,5 @@
 package internal
 
-import (
-	"io"
-	"time"
-)
-
 // ResolvedVersion represents a resolved Godot version.
 type ResolvedVersion struct {
 	Minor  string // e.g., "4.3"
@@ -39,8 +34,6 @@ type RunContext struct {
 	Godot       *ResolvedVersion
 	Flags       *Flags
 	Logger      Logger
-	Clock       func() time.Time
-	HTTP        HTTPClient
 }
 
 // Logger defines the logging interface.
@@ -50,11 +43,6 @@ type Logger interface {
 	Error(msg string, args ...interface{})
 	Debug(msg string, args ...interface{})
 	Printf(format string, args ...interface{})
-}
-
-// HTTPClient defines the HTTP interface for dependency injection (testable).
-type HTTPClient interface {
-	Do(method, url string) (resp io.ReadCloser, size int64, err error)
 }
 
 // Artifact describes a downloadable/verifiable component.

@@ -90,9 +90,6 @@ func TestValidateHostSupport(t *testing.T) {
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
 			return nil
 		},
-		ConfigureProject: func(projectRoot string, workspace *internal.Workspace, version string, key string, logger internal.Logger) *internal.Error {
-			return nil
-		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 			return "", ""
 		},
