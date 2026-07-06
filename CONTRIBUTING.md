@@ -95,16 +95,7 @@ The `create` command follows these phases:
 
 **Overall test coverage:** ~85% across all packages
 
-### Slice 2 (CI/Automation)
-**Status:** 🔧 Planned
-
-**What's Needed:**
-- `--non-interactive` flag
-- `--json` output format
-- Secret-safe logging (key masking)
-- CI environment detection
-
-### Slice 3+ (Multi-Platform)
+### Slice 2 (Multi-Platform)
 **Status:** 🔧 Planned
 
 **What's Needed:**
@@ -112,6 +103,15 @@ The `create` command follows these phases:
 - `Provisioner` interface extraction
 - `EnvironmentBuilder` interface
 - Platform-specific implementations (Linux, Web, macOS/iOS, Android)
+
+### Slice 3 (CI/Automation)
+**Status:** 🔧 Planned
+
+**What's Needed:**
+- `--non-interactive` flag
+- `--json` output format
+- Secret-safe logging (key masking)
+- CI environment detection
 
 ---
 

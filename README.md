@@ -274,7 +274,7 @@ The key file has restrictive permissions (`0600`—owner-read-only). Ensure you'
 - **Encryption key:** AES-256, generated with `crypto/rand`, stored owner-only (`0600`)
 - **Scripts/resources:** Encrypted with your key in the final `.exe`
 - **Build artefacts:** Automatically cleaned up (`.gst/runtime/` removed after build)
-- **Manifest:** Records version, platform, and method (for audit trail in Slice 2+)
+- **Manifest:** Records version, platform, and method (for audit trail in Slice 3+)
 
 **Keys must be shared only through secure secret-management channels, never via source control.**
 
@@ -315,8 +315,8 @@ After compilation, the tool injects your encryption key into:
 
 ### Future Releases
 
-- **Slice 2 (CI/Automation):** `--non-interactive`, `--json`, secret-safe logging
-- **Slice 3+ (Multi-Platform):** Linux, Web, macOS/iOS, Android (same `gst` command)
+- **Slice 2 (Multi-Platform):** Linux, Web, macOS/iOS, Android (same `gst` command)
+- **Slice 3 (CI/Automation):** `--non-interactive`, `--json`, secret-safe logging
 
 ### Contributing
 

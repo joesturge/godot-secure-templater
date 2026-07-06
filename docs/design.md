@@ -78,7 +78,7 @@ templates. Therefore the tool:
 
 ### 2.1 Actors
 * **Developer (interactive):** runs the tool at a terminal, may answer prompts.
-* **CI runner (non-interactive) `[Slice 2]`:** no stdin; requires deterministic inputs and
+* **CI runner (non-interactive) `[Slice 3]`:** no stdin; requires deterministic inputs and
   machine-readable output.
 * **External services:** Godot GitHub Releases API (version + source), toolchain artifact hosts
   (Python, MinGW-w64, SCons).
@@ -109,8 +109,8 @@ type RunContext struct {
     Godot         ResolvedVersion // §4
     Platform      PlatformID      // "windows" in Slice 0; registry key later
     Flags         Flags           // parsed CLI flags (§11)
-    Interactive   bool            // false in CI [Slice 2]
-    Logger        Logger          // structured; JSON sink optional [Slice 2]
+    Interactive   bool            // false in CI [Slice 3]
+    Logger        Logger          // structured; JSON sink optional [Slice 3]
     Clock         func() time.Time
     HTTP          Doer            // injectable for tests
 }
@@ -449,7 +449,7 @@ Skip compilation iff: manifest `status == success` **and** its fingerprint == cu
 **and** the referenced artifacts exist with matching hashes. Else rebuild. `--force-rebuild`
 bypasses.
 
-### 9.4 CI caching `[Slice 2]`
+### 9.4 CI caching `[Slice 3]`
 `manifest.json` is the natural `actions/cache` key. Restore `templates/` + `manifest.json` keyed on
 the fingerprint (Godot version + platform + toolchain identity). On a hit, §9.3 skips the 20–60+ min
 compile; on a miss (e.g. a version bump), a normal build runs. No new caching mechanism is
@@ -457,7 +457,7 @@ introduced.
 
 ---
 
-## 10. Platform Plugin Framework `[Slice 3]`
+## 10. Platform Plugin Framework `[Slice 2]`
 
 ### 10.1 Motivation & timing
 Built **when a real second target (Linux) exists**, not speculatively for one platform. Designing
@@ -503,7 +503,7 @@ type EnvironmentBuilder interface {
 | Target | Toolchain | Notes |
 |---|---|---|
 | Windows | MinGW-w64 | Slice 0/1 |
-| Linux (`linuxbsd`) | GCC/Clang | first extraction driver, Slice 3 |
+| Linux (`linuxbsd`) | GCC/Clang | first extraction driver, Slice 2 |
 | Web (HTML5) | **Emscripten SDK** | not a C++ cross-compiler in the MinGW/GCC sense |
 | Android | Android SDK/NDK | |
 | macOS / iOS | Xcode toolchain | generally requires a macOS host |
@@ -545,7 +545,7 @@ target needs handling beyond the generic path. **No changes** to `cmd/`, `intern
 | `--non-interactive` / `--yes` | 2 | Disable all prompts; fail fast instead. |
 | `--json` | 2 | Structured event output. |
 
-### 11.3 Exit codes (stable contract for CI `[Slice 2]`)
+### 11.3 Exit codes (stable contract for CI `[Slice 3]`)
 | Code | Meaning |
 |---|---|
 | 0 | Success |
@@ -626,7 +626,7 @@ crash mid-write cannot truncate or corrupt the original.
 |---|---|---|
 | On-disk `encryption.key` | Readable by other local users | `0600`/owner-only ACL; documented that gitignore ≠ secrecy |
 | VCS | Accidental commit | `.gitignore` ensured before generation (defense-in-depth) |
-| Env var to SCons | Visible in `ps`/`/proc`; **captured in CI logs** | `[Slice 2]` mask in all tool output; avoid echoing; prefer file/stdin handoff to the build where feasible |
+| Env var to SCons | Visible in `ps`/`/proc`; **captured in CI logs** | `[Slice 3]` mask in all tool output; avoid echoing; prefer file/stdin handoff to the build where feasible |
 | Logs/manifest | Accidental leak | Key is **never** written to logs or manifest by contract (§6.4) |
 
 ### 14.4 Isolation guarantees
@@ -643,7 +643,7 @@ No system env vars, no registry writes, no installs outside `<ProjectRoot>`. Lon
 ## 15. Observability & Logging
 
 * **Human logs:** streamed to the terminal; full detail persisted to `logs/<timestamp>-<stage>.log`.
-* **Structured logs `[Slice 2]`:** `--json` emits one event object per stage transition
+* **Structured logs `[Slice 3]`:** `--json` emits one event object per stage transition
   (`{stage, status, elapsedMs, …}`) so CI can assert without scraping text.
 * **Secret redaction:** a logging middleware refuses to emit the key value (matched by length/format
   and by the known variable name).
@@ -675,7 +675,7 @@ No system env vars, no registry writes, no installs outside `<ProjectRoot>`. Lon
   a schedule, not per-commit, due to duration.
 
 ### 16.4 Cross-slice contract tests
-* When the plugin framework lands `[Slice 3]`, the extracted `windows` plugin must pass the **same**
+* When the plugin framework lands `[Slice 2]`, the extracted `windows` plugin must pass the **same**
   integration suite the concrete Slice 0/1 code passed — proving the extraction preserved behavior.
 
 ---
@@ -691,4 +691,4 @@ No system env vars, no registry writes, no installs outside `<ProjectRoot>`. Lon
 7. Unknown version / schema / host-target combination → explicit fail-closed error.
 8. Hold the run lock for the duration; make interruption non-corrupting.
 9. Every consequential decision is echoed and (from Slice 1) recorded in the manifest.
-10. Platform-specific logic stays behind the §4.6 seams so Slice 3 extraction stays mechanical.
+10. Platform-specific logic stays behind the §4.6 seams so Slice 2 extraction stays mechanical.

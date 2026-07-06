@@ -33,10 +33,10 @@ These hold across every slice and are the reason the plan can start tiny yet gro
 1. **MVP-first, but never a throwaway.** Slice 0 is deliberately minimal, but its structure is the
    real structure. Later slices *add* to it; they do not replace it.
 2. **Extensibility via seams, not speculative frameworks.** We do **not** build the plugin/registry
-   machinery up front for a single platform. Instead, Slice 0 places its platform-specific work
-   (toolchain provisioning, build invocation, config writing) behind \*\*narrow, single-purpose
-   internal functions whose signatures already match the future interfaces\*\*. Slice 3 then extracts
-   those interfaces — a mechanical refactor, not a redesign. The seams are named explicitly in §4.6.
+  machinery up front for a single platform. Instead, Slice 0 places its platform-specific work
+  (toolchain provisioning, build invocation, config writing) behind \*\*narrow, single-purpose
+  internal functions whose signatures already match the future interfaces\*\*. Slice 2 then extracts
+  those interfaces — a mechanical refactor, not a redesign. The seams are named explicitly in §4.6.
 3. **Fail closed, never guess.** Any unrecognized Godot version, config schema, host/target
    combination, or integrity-check failure is an explicit, specific error — never a silent
    best-effort that could corrupt a user's project or ship a broken build.
@@ -48,11 +48,11 @@ These hold across every slice and are the reason the plan can start tiny yet gro
    toolchain checksums) is echoed to the user and — from Slice 1 — recorded in a manifest, so runs
    are reproducible.
 6. **Verifiable by construction.** All nondeterministic dependencies (clock, network, filesystem
-   root) are injected, so every stage is testable without a 40-minute compile or live network. Each
-   slice ships with contract tests; the highest-risk subsystem (config editing) is guarded by
-   byte-preservation golden tests, and the Slice 3 plugin extraction is guarded by a \*\*cross-slice
-   contract test\*\* — the extracted `windows` plugin must pass the *same* suite the concrete Slice 0/1
-   code passed, which is what makes "extraction, not rewrite" a checkable claim rather than a hope.
+  root) are injected, so every stage is testable without a 40-minute compile or live network. Each
+  slice ships with contract tests; the highest-risk subsystem (config editing) is guarded by
+  byte-preservation golden tests, and the Slice 2 plugin extraction is guarded by a \*\*cross-slice
+  contract test\*\* — the extracted `windows` plugin must pass the *same* suite the concrete Slice 0/1
+  code passed, which is what makes "extraction, not rewrite" a checkable claim rather than a hope.
 
 > **Companion document.** This is the delivery plan (*what ships when, and why*). The full
 > engineering detail — data structures, interfaces, algorithms, error taxonomy, threat model, and
@@ -66,8 +66,8 @@ These hold across every slice and are the reason the plan can start tiny yet gro
 | --- | --- | --- | --- |
 | **0** | Walking skeleton (MVP) | One hard-coded happy path: Windows→Windows, Godot 4.3+, explicit version, compile + wire-in, safe config/key handling | Version inference, manifest/caching, CI mode, runtime pruning, long-path prefixing, multi-era config, plugin framework |
 | **1** | Robust single-platform tool | Version resolution chain, manifest + idempotency, staged progress, cleanup, multi-era config, long-path handling, key-regen guardrails | CI/non-interactive, multi-platform |
-| **2** | CI / automation | `--non-interactive`/`--yes`, `--json`, manifest-keyed caching, secret-safe logging, parallel release+debug compilation | Multi-platform |
-| **3** | Multi-platform extensibility | Extract plugin registry + `Provisioner`/`EnvironmentBuilder` interfaces + host/target matrix, driven by a real 2nd target (Linux) | Web/Android/macOS/iOS specifics |
+| **2** | Multi-platform extensibility | Extract plugin registry + `Provisioner`/`EnvironmentBuilder` interfaces + host/target matrix, driven by a real 2nd target (Linux) | Web/Android/macOS/iOS specifics |
+| **3** | CI / automation | `--non-interactive`/`--yes`, `--json`, manifest-keyed caching, secret-safe logging, parallel release+debug compilation | — |
 | **4+** | Breadth & hardening | Concrete Web/Android/macOS/iOS plugins, signature verification, documented CI workflow, `list-platforms` | — |
 
 ---
@@ -147,7 +147,7 @@ MyGame/
   Slice 0 streams raw SCons output to `stdout` + `logs/` (staged parsing is Slice 1).
 * **Key handoff & exposure:** the AES key is passed to the build via Godot's conventional
   `SCRIPT_AES256_ENCRYPTION_KEY` env var. This surface (visible in process listings; frequently
-  captured by CI logs) is acknowledged now and mitigated when it matters most in Slice 2 (log
+  captured by CI logs) is acknowledged now and mitigated when it matters most in Slice 3 (log
   masking; prefer a file/stdin handoff where feasible).
 * **Config injection — ordered, atomic, reversible:**
 
@@ -176,15 +176,15 @@ Perform config writes **only after a verified successful compile**, so a build f
 ### 4.6 Module layout and the extensibility seams
 
 Flat by design — no registry or interfaces yet — but the platform-specific work is already isolated
-behind functions whose shapes match the Slice 3 interfaces, so extraction is mechanical.
+behind functions whose shapes match the Slice 2 interfaces, so extraction is mechanical.
 
 | Package | Slice 0 responsibility | Future-proofing seam |
 | --- | --- | --- |
-| `cmd/` | Cobra CLI: `create`, flags. | Already routes on a `platform` value (hard-wired `"windows"`); Slice 3 makes it a registry lookup. |
+| `cmd/` | Cobra CLI: `create`, flags. | Already routes on a `platform` value (hard-wired `"windows"`); Slice 2 makes it a registry lookup. |
 | `internal/project` | Locate/parse `project.godot`, validate version, folder + `.gitignore` setup, lockfile. | OS-agnostic already; version handling is a single function Slice 1 grows into the resolver chain. |
-| `internal/toolchain` | Download + SHA-256-verify + extract Windows toolchain & Godot source. | Concrete `provisionWindows(...)` **matches the future `Provisioner` interface signature** — Slice 3 extracts the interface, this becomes the `windows` plugin's impl. |
+| `internal/toolchain` | Download + SHA-256-verify + extract Windows toolchain & Godot source. | Concrete `provisionWindows(...)` **matches the future `Provisioner` interface signature** — Slice 2 extracts the interface, this becomes the `windows` plugin's impl. |
 | `internal/crypto` | AES-256 gen/reuse, secure storage. | Fully platform-agnostic; unchanged by all later slices. |
-| `internal/builder` | Build isolated env, invoke SCons `platform=windows`, stream output. | Concrete `buildWindows(...)` **matches the future `EnvironmentBuilder` interface** — extracted in Slice 3. |
+| `internal/builder` | Build isolated env, invoke SCons `platform=windows`, stream output. | Concrete `buildWindows(...)` **matches the future `EnvironmentBuilder` interface** — extracted in Slice 2. |
 | `internal/config` | Targeted `ConfigFile` edits, atomic writes, backup-once, rollback, `.gitignore`. | Key-writing goes through a **single `writeCredential(version, key)` function** — Slice 1 turns it into a version-range `CredentialWriter` table without touching callers. |
 
 **Slice 0 acceptance:** on a clean Windows + Godot 4.3+ project,
@@ -207,7 +207,7 @@ all through the seams already in place.
     - **Determinism guard (addresses the non-deterministic-fallback risk):** the "latest patch"
     fallback is time-dependent and hits an unauthenticated, rate-limited API (60/hr, shared CI IPs)
     that fails offline. Support an authenticated token and cache release metadata; treat API failure
-    as a clear, specific error. In non-interactive contexts (Slice 2) prefer *requiring* an explicit
+    as a clear, specific error. In non-interactive contexts (Slice 3) prefer *requiring* an explicit
     version over silently taking latest.
 * **Build manifest (`manifest.json`).** Records resolved version + method, **toolchain checksums**,
   target platform (`"windows"` from day one, so it generalizes), timestamp, config, success/failure.
@@ -225,7 +225,7 @@ all through the seams already in place.
 * **Multi-era config routing.** Grow `writeCredential` into a `CredentialWriter` table keyed by
   version range: 4.3+ → `export_credentials.cfg`; 4.1–4.2 → `script_encryption_key` in
   `export_presets.cfg`; < 4.1 → error early; unrecognized future schema → **fail closed**. (This is
-  *config-era* strategy, distinct from the *platform* plugin framework in Slice 3.)
+  *config-era* strategy, distinct from the *platform* plugin framework in Slice 2.)
 * **Long-path handling.** Read-only detection of Windows `LongPathsEnabled`; warn with remediation;
   use `\\?\` extended-length prefixes internally where possible; fail fast with a clear diagnostic on
   a path that will exceed `MAX_PATH`.
@@ -235,35 +235,7 @@ all through the seams already in place.
 
 ---
 
-## 6. Slice 2 — CI / Automation
-
-Makes the tool safe to run unattended (e.g. GitHub Actions).
-
-* **`--non-interactive` / `--yes`.** Every step that could prompt (key regeneration, unresolvable
-  version, long-path warning) instead fails fast with a non-zero exit and a machine-readable error.
-* **`--json` output mode.** Structured events so a workflow asserts on success/failure without
-  scraping human text.
-* **Secret-safe logging (closes the key-exposure surface from §4.5).** Mask the key in all output,
-  avoid echoing the env var, and prefer a file/stdin handoff to the build over the process
-  environment where feasible.
-* **Manifest-keyed caching.** `manifest.json` is the natural `actions/cache` key — restore
-  `templates/` + `manifest.json` keyed on resolved Godot version + platform **+ toolchain identity**
-  (per the Slice 1 idempotency key); the existing idempotency check then skips the 20–60+ min compile
-  on a hit. No new caching mechanism required.
-* **Parallel release/debug compilation.** Build release and debug templates concurrently to reduce
-  wall-clock time in CI. Keep artefact names and config-injection outputs unchanged, collect logs per
-  target, and fail the run if either target fails.
-* **Explicit-version recommendation.** In non-interactive mode, prefer requiring `--godot-version`
-  over the latest-patch fallback to avoid time-based drift.
-* **Stable exit-code contract.** CI needs to branch on *why* a run failed, not scrape text. Every
-  typed error maps to a fixed exit code (e.g. `0` success, `4` version-resolution, `5`
-  integrity/checksum, `6` insufficient disk, `7` build failed, `8` config injection rolled back, `9`
-  unsupported version/schema, `10` lock held). The full table is in the design doc; the contract is
-  that these codes are stable across releases so workflows can rely on them.
-
----
-
-## 7. Slice 3 — Multi-Platform Extensibility (the plugin framework)
+## 6. Slice 2 — Multi-Platform Extensibility (the plugin framework)
 
 \*\*Introduced here — driven by a real second target (Linux), not built speculatively for one
 platform.\*\* Designing the abstraction against two concrete cases yields a better interface than
@@ -296,6 +268,34 @@ signatures (§4.6), this is an **extraction/refactor, not a rewrite**.
 
 ---
 
+## 7. Slice 3 — CI / Automation
+
+Makes the tool safe to run unattended (e.g. GitHub Actions).
+
+* **`--non-interactive` / `--yes`.** Every step that could prompt (key regeneration, unresolvable
+  version, long-path warning) instead fails fast with a non-zero exit and a machine-readable error.
+* **`--json` output mode.** Structured events so a workflow asserts on success/failure without
+  scraping human text.
+* **Secret-safe logging (closes the key-exposure surface from §4.5).** Mask the key in all output,
+  avoid echoing the env var, and prefer a file/stdin handoff to the build over the process
+  environment where feasible.
+* **Manifest-keyed caching.** `manifest.json` is the natural `actions/cache` key — restore
+  `templates/` + `manifest.json` keyed on resolved Godot version + platform **+ toolchain identity**
+  (per the Slice 1 idempotency key); the existing idempotency check then skips the 20–60+ min compile
+  on a hit. No new caching mechanism required.
+* **Parallel release/debug compilation.** Build release and debug templates concurrently to reduce
+  wall-clock time in CI. Keep artefact names and config-injection outputs unchanged, collect logs per
+  target, and fail the run if either target fails.
+* **Explicit-version recommendation.** In non-interactive mode, prefer requiring `--godot-version`
+  over the latest-patch fallback to avoid time-based drift.
+* **Stable exit-code contract.** CI needs to branch on *why* a run failed, not scrape text. Every
+  typed error maps to a fixed exit code (e.g. `0` success, `4` version-resolution, `5`
+  integrity/checksum, `6` insufficient disk, `7` build failed, `8` config injection rolled back, `9`
+  unsupported version/schema, `10` lock held). The full table is in the design doc; the contract is
+  that these codes are stable across releases so workflows can rely on them.
+
+---
+
 ## 8. Slice 4+ — Breadth & Hardening
 
 * Concrete `linux`, `web`, `android`, `macos`/`ios` plugins against §7. macOS/iOS needs a decision on
@@ -321,7 +321,7 @@ are pulled forward into the MVP because they're cheap to get right early and cos
 | 6 | "Latest patch" fallback non-deterministic; GitHub API rate-limited/offline | Medium | §5 token + metadata cache + specific errors; §6 prefer explicit version in CI |
 | 7 | No disk-space preflight before multi-GB, 20–60 min build | Medium | §4.4 — free-space check before download/compile |
 | 8 | No concurrency guard / interruption safety | Medium | §4.3 — run lockfile + §4.5 atomic writes |
-| 9 | Plugin framework built speculatively for one platform (over-engineering) | Medium (design) | §2.2 seams in Slice 0; §7 framework extracted in Slice 3, driven by a real 2nd target |
+| 9 | Plugin framework built speculatively for one platform (over-engineering) | Medium (design) | §2.2 seams in Slice 0; §7 framework extracted in Slice 2, driven by a real 2nd target |
 | 10 | Machine-local `export_credentials.cfg` surprises teammates | Low (UX) | §5 — explicit note in output/docs |
 | 11 | Parsing `godot --version` build-metadata suffixes | Low | §5 — careful suffix parsing in resolver |
 | 12 | Patch-mismatch tolerance (sound, but bounded to same minor line) | Low (noted) | §4.3 — minor-mismatch hard fail; patch tolerated by design |
