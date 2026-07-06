@@ -171,8 +171,7 @@ func TestGetTeammateMessage(t *testing.T) {
 
 	// THEN it should contain key guidance
 	assert.NotEmpty(t, msg)
-	assert.Contains(t, msg, "encryption key")
-	assert.Contains(t, msg, "shared project secret")
-	assert.Contains(t, msg, "CI")
+	assert.Contains(t, msg, ".gst/encryption.key")
+	assert.Contains(t, msg, "set up the export preset")
 	assert.Contains(t, msg, "source control")
 }

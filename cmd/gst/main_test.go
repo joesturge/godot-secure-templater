@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/joemi/godot-secure-templater/internal"
-	"github.com/joemi/godot-secure-templater/internal/config"
 )
 
 func TestRootCommand_CreateValidationErrors(t *testing.T) {
@@ -53,6 +52,7 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 
 	// WHEN inspecting the command metadata
 	flag := createCmd.Flag("godot-version")
+	platformFlag := createCmd.Flag("platform")
 	editorPathFlag := createCmd.Flag("godot-editor-path")
 
 	// THEN the create subcommand should be discoverable
@@ -65,6 +65,80 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 
 	// AND the create command should expose editor path override for local-editor strategy
 	assert.NotNil(t, editorPathFlag, "create command should define the godot-editor-path flag")
+
+	// AND the platform flag should default to the detected host tuple
+	assert.NotNil(t, platformFlag, "create command should define the platform flag")
+	assert.Equal(t, detectedHostTuple(), platformFlag.DefValue, "platform flag default should match detected GOOS/GOARCH host tuple")
+}
+
+func TestDetectedHostTuple(t *testing.T) {
+	// GIVEN runtime host information
+	// WHEN deriving the tuple
+	tuple := detectedHostTuple()
+
+	// THEN the tuple should contain OS and arch separated by a slash
+	assert.Contains(t, tuple, "/", "Detected host tuple should use os/arch format")
+	parts := bytes.Split([]byte(tuple), []byte("/"))
+	assert.Len(t, parts, 2, "Detected host tuple should have exactly two components")
+}
+
+func TestResolveTargetPlatform(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		wantTuple    string
+		wantPlatform string
+		wantErr      bool
+	}{
+		{
+			name:         "windows tuple explicit",
+			input:        "windows/amd64",
+			wantTuple:    "windows/amd64",
+			wantPlatform: "windows",
+			wantErr:      false,
+		},
+		{
+			name:         "windows alias normalised",
+			input:        "windows",
+			wantTuple:    "windows/amd64",
+			wantPlatform: "windows",
+			wantErr:      false,
+		},
+		{
+			name:         "linux tuple is unknown when plugin is not registered",
+			input:        "linux/amd64",
+			wantTuple:    "linux/amd64",
+			wantPlatform: "",
+			wantErr:      true,
+		},
+		{
+			name:         "unknown tuple unsupported",
+			input:        "darwin/arm64",
+			wantTuple:    "darwin/arm64",
+			wantPlatform: "",
+			wantErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a platform tuple input
+
+			// WHEN resolving target platform details
+			gotTuple, gotPlatform, err := resolveTargetPlatform(tt.input)
+
+			// THEN resolved tuple and platform should match expectations
+			assert.Equal(t, tt.wantTuple, gotTuple, "Resolved tuple should match expected normalised tuple")
+			assert.Equal(t, tt.wantPlatform, gotPlatform, "Resolved platform should match expected platform key")
+
+			// AND error presence should match support status
+			if tt.wantErr {
+				assert.NotNil(t, err, "Unsupported tuple should return a typed error")
+			} else {
+				assert.Nil(t, err, "Supported tuple should resolve without error")
+			}
+		})
+	}
 }
 
 func TestRootCommand_HasCleanSubcommand(t *testing.T) {
@@ -91,8 +165,11 @@ func TestRunCreate_ReturnsNotGodotProjectError(t *testing.T) {
 
 	oldVersion := flagGodotVersion
 	flagGodotVersion = "4.3.2"
+	oldPlatform := flagPlatform
+	flagPlatform = "windows/amd64"
 	t.Cleanup(func() {
 		flagGodotVersion = oldVersion
+		flagPlatform = oldPlatform
 	})
 
 	// WHEN running create directly
@@ -206,35 +283,48 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	assert.Len(t, checksums, 3, "Checksum map should include all components")
 }
 
-func TestApplyProjectConfigWritesPresetsAndCredentials(t *testing.T) {
-	// GIVEN a project root and workspace with template paths
-	tmpDir := t.TempDir()
-	workspace := &internal.Workspace{
-		Templates: filepath.Join(tmpDir, ".gst", "templates"),
+func TestShouldCheckWindowsPathLimits(t *testing.T) {
+	tests := []struct {
+		name      string
+		hostTuple string
+		want      bool
+	}{
+		{
+			name:      "windows host tuple enables checks",
+			hostTuple: "windows/amd64",
+			want:      true,
+		},
+		{
+			name:      "tuple parsing is case insensitive",
+			hostTuple: "Windows/ARM64",
+			want:      true,
+		},
+		{
+			name:      "tuple parsing trims whitespace",
+			hostTuple: "  windows/amd64  ",
+			want:      true,
+		},
+		{
+			name:      "non windows host skips checks",
+			hostTuple: "linux/amd64",
+			want:      false,
+		},
+		{
+			name:      "invalid tuple skips checks",
+			hostTuple: "windows",
+			want:      false,
+		},
 	}
-	err := os.MkdirAll(workspace.Templates, 0755)
-	assert.NoError(t, err, "Should create templates directory")
 
-	key := "abcdef0123456789"
-	logger := internal.NewSimpleLogger(false)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a host tuple string
 
-	// WHEN applying project configuration
-	applyErr := applyProjectConfig(tmpDir, workspace, config.Era43Plus, key, logger)
+			// WHEN checking whether windows path limits should run
+			got := shouldCheckWindowsPathLimits(tt.hostTuple)
 
-	// THEN no error should occur
-	assert.Nil(t, applyErr, "applyProjectConfig should succeed")
-
-	// AND export_presets.cfg should include injected template paths
-	presetsPath := filepath.Join(tmpDir, "export_presets.cfg")
-	presetsData, readPresetsErr := os.ReadFile(presetsPath)
-	assert.NoError(t, readPresetsErr, "export_presets.cfg should be created")
-	presets := string(presetsData)
-	assert.Contains(t, presets, "custom_template/release=", "release template key should be injected")
-	assert.Contains(t, presets, "custom_template/debug=", "debug template key should be injected")
-
-	// AND .godot/export_credentials.cfg should include encryption key
-	credsPath := filepath.Join(tmpDir, ".godot", "export_credentials.cfg")
-	credsData, readCredsErr := os.ReadFile(credsPath)
-	assert.NoError(t, readCredsErr, "export credentials should be created")
-	assert.Contains(t, string(credsData), key, "encryption key should be injected into credentials")
+			// THEN result should match expected host-gating behaviour
+			assert.Equal(t, tt.want, got, "Host tuple should map to expected path-check gating")
+		})
+	}
 }

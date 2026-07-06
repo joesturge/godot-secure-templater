@@ -204,7 +204,6 @@ func (o *Orchestrator) CleanupAfterSuccess() error {
 func (o *Orchestrator) GetTeammateMessage() string {
 	return `
 📋 Note for teammates:
-	Treat the encryption key as a shared project secret.
-	Distribute it securely to team members and CI via a secrets manager.
-	Do not commit key material to source control.`
+	Use the key file at .gst/encryption.key locally when you set up the export preset.
+	Do not print the raw key or commit key material to source control.`
 }

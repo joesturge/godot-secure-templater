@@ -140,7 +140,7 @@ MyGame/
   mechanism. If present, **reuse** it (reuse is always safe; regeneration is the dangerous op and is
   deferred to Slice 1 behind explicit confirmation).
 
-### 4.5 Compilation & config injection (safety-critical)
+### 4.5 Compilation & manual setup guidance
 
 * **Compile:** construct an isolated environment mapping execution paths to `runtime/` binaries and
   invoke headless SCons for `platform=windows`, producing release + debug templates in `templates/`.
@@ -149,27 +149,15 @@ MyGame/
   `SCRIPT_AES256_ENCRYPTION_KEY` env var. This surface (visible in process listings; frequently
   captured by CI logs) is acknowledged now and mitigated when it matters most in Slice 3 (log
   masking; prefer a file/stdin handoff where feasible).
-* **Config injection — ordered, atomic, reversible:**
+* **Manual setup guidance — no default config mutation:** after a verified successful compile,
+  print the template paths and the local `.gst/encryption.key` path so the user can wire the
+  preset in the Godot Editor themselves. The tool never prints the raw key value.
 
-Perform config writes **only after a verified successful compile**, so a build failure never
-     leaves the project pointing at templates that don't exist.**Backup once:** create `export_presets.cfg.bak` / `export_credentials.cfg.bak` \*\*only if a
-     backup does not already exist\*\*, so a second run never overwrites the pristine original with an
-     already-modified file.**Atomic writes:** write to a temp file and rename, so an interrupted write can't truncate the
-     user's config.**Rollback on failure:** if injection fails partway, restore from backup so the project is never
-     left half-edited.Set `custom_template/release` and `custom_template/debug` on the Windows preset, and write
-     `encryption/script_encryption_key` into `.godot/export_credentials.cfg` (the 4.3+ target).
-
-* **`ConfigFile`, not INI — use targeted edits, not round-tripping.** `export_presets.cfg` /
+* **`ConfigFile`, not INI — manual setup avoids the parser in the default flow.** `export_presets.cfg` /
   `export_credentials.cfg` are Godot `ConfigFile` format with typed literals
-  (`PackedStringArray(...)`, `Dictionary(...)`, resource refs, nested quoting). There is no
-  off-the-shelf Go library, and a generic serializer that reorders keys, drops comments, or
-  reformats literals will silently corrupt users' settings. Slice 0 therefore does \*\*targeted,
-  minimal edits\*\*: locate the relevant section/keys, rewrite only those, and preserve the rest of the
-  file byte-for-byte. A full ConfigFile parser is built only if a later slice genuinely needs one.
-  If the tool cannot **unambiguously locate** the target section/keys (unexpected structure, missing
-  preset), it **refuses to edit** and errors (`config structure unrecognized`) rather than writing
-  and risking corruption. Tool-authored regions are stamped with a marker comment so re-runs can
-  recognize and update their own edits idempotently.
+  (`PackedStringArray(...)`, `Dictionary(...)`, resource refs, nested quoting). The default runtime
+  flow now prints the values the user needs and leaves the editor files untouched. A full parser is
+  still a future option if automatic setup returns as an explicit opt-in.
 * **Version-era gate:** Slice 0 supports **only** Godot 4.3+. Any other version is an explicit
   "not yet supported" error — never a guess.
 
@@ -290,7 +278,7 @@ Makes the tool safe to run unattended (e.g. GitHub Actions).
   over the latest-patch fallback to avoid time-based drift.
 * **Stable exit-code contract.** CI needs to branch on *why* a run failed, not scrape text. Every
   typed error maps to a fixed exit code (e.g. `0` success, `4` version-resolution, `5`
-  integrity/checksum, `6` insufficient disk, `7` build failed, `8` config injection rolled back, `9`
+  integrity/checksum, `6` insufficient disk, `7` build failed, `8` manual setup guidance, `9`
   unsupported version/schema, `10` lock held). The full table is in the design doc; the contract is
   that these codes are stable across releases so workflows can rely on them.
 
@@ -315,7 +303,7 @@ are pulled forward into the MVP because they're cheap to get right early and cos
 | --- | --- | --- | --- |
 | 1 | `ConfigFile` (not INI) round-trip can corrupt user settings; no Go library | High | §4.5 — targeted minimal edits, byte-preserving; full parser only if later needed |
 | 2 | Single-slot `.bak` overwrites the pristine original on 2nd run | High | §4.5 — backup-once (create only if absent) |
-| 3 | No transactional ordering/rollback between compile and config injection | High | §4.5 — inject only after verified compile; atomic writes; restore-on-failure |
+| 3 | No transactional ordering/rollback between compile and manual setup guidance | High | §4.5 — print guidance only after verified compile; keep user files untouched |
 | 4 | Key material exposed: plaintext on disk + env-var handoff (CI log leak) | High (security) | §4.4 owner-only perms; §4.5 acknowledged; §6 log masking + file/stdin handoff |
 | 5 | Idempotency/cache key omits toolchain identity → stale artifacts | Medium | §5 idempotency keyed on toolchain/tool identity; §6 cache key follows suit |
 | 6 | "Latest patch" fallback non-deterministic; GitHub API rate-limited/offline | Medium | §5 token + metadata cache + specific errors; §6 prefer explicit version in CI |

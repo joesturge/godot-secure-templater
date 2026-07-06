@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 )
@@ -39,9 +38,3 @@ func (l *SimpleLogger) Printf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 }
 
-// NoOpHTTPClient is a stub for testing.
-type NoOpHTTPClient struct{}
-
-func (c *NoOpHTTPClient) Do(method, url string) (io.ReadCloser, int64, error) {
-	return nil, 0, fmt.Errorf("no-op client: not implemented")
-}

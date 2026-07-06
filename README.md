@@ -4,7 +4,7 @@
 
 <img width="735" height="342" alt="image" src="https://github.com/user-attachments/assets/3f19bdc2-1719-4cc4-a3bc-ada1d6d9cde2" />
 
-`gst` automates provisioning, compilation, and configuration of encrypted Godot export templates—all in an isolated workspace within your project. No manual C++ toolchain setup. No Python dependency hell. No SCons config. Just one command.
+`gst` automates provisioning and compilation of encrypted Godot export templates—all in an isolated workspace within your project. No manual C++ toolchain setup. No Python dependency hell. No SCons config. Just one command.
 
 ```bash
 $ gst create
@@ -15,7 +15,7 @@ $ gst create
 ### 🔒 Encrypted Godot Exports
 - Generates an AES-256 encryption key for your project
 - Compiles Godot templates with `SCRIPT_AES256_ENCRYPTION_KEY` baked in
-- Wires the key into your export settings
+- Prints exact setup steps for your export preset and key placement
 - **Result:** Your game scripts and resources are encrypted in the final binary
 
 ### 🛠️ Automated Toolchain
@@ -24,8 +24,8 @@ $ gst create
 - Cleans up after build (optional `--keep-runtime` for debugging)
 - **Result:** No manual compiler installation ever
 
-### 🚀 One Command to Wire Project Secrets
-Run `gst create` whenever you need to compile templates or re-apply export wiring.
+### 🚀 One Command to Build and Set Up
+Run `gst create` whenever you need to compile templates and print the setup steps for Godot.
 
 Use one shared project key distributed securely (for example via your secret manager or CI).
 
@@ -43,7 +43,7 @@ Use one shared project key distributed securely (for example via your secret man
 
 ### 📍 Platform-Ready
 - **Now:** Windows Desktop (4.3+, real SCons compilation with AES-256 encryption)
-- **Soon:** Linux, Web, macOS/iOS, Android (same `gst` command)
+- **Next:** Linux target is planned but not implemented yet
 
 ---
 
@@ -112,9 +112,9 @@ For contributor and release build commands, see [CONTRIBUTING.md](CONTRIBUTING.m
 3. Create or select a **Windows Desktop** preset.
 4. Save and close the export dialogue.
 
-This creates/updates `export_presets.cfg`, which `gst` will wire automatically.
+This creates/updates `export_presets.cfg`, which you will configure using the paths `gst` prints after compilation.
 
-### 2. Run gst to populate templates and encryption key
+### 2. Run gst to compile templates and prepare key material
 
 ```bash
 cd /path/to/your/game
@@ -123,11 +123,11 @@ gst create
 
 `gst` will:
 - compile (or cache-hit) encrypted Windows templates
-- populate custom template paths in `export_presets.cfg`
-- write your project encryption key to `.godot/export_credentials.cfg` (Godot 4.3+)
+- generate or reuse `.gst/encryption.key`
+- print next steps for setting template paths and key usage in Godot
 
 **Flags:**
-- `--godot-version VERSION` (required) — Godot version to compile (must match project)
+- `--godot-version VERSION` (recommended) — explicit Godot version to compile (must match project minor line)
 - `--verbose` — Show detailed build output
 - `--keep-runtime` — Preserve toolchain after build (useful for repeated builds or debugging)
 - `--force-rebuild` — Skip cache; always recompile templates
@@ -139,7 +139,7 @@ gst create
 1. Open **Project → Export** again.
 2. Confirm the **Windows Desktop** preset is selected.
 3. Export the project.
-4. Your build uses the injected custom templates and encryption key.
+4. Your build uses the custom templates and encryption key you configured.
 
 ---
 
@@ -154,9 +154,7 @@ my-game/
 │   ├── templates/                 # Compiled export templates (windows_release.exe, etc.)
 │   ├── encryption.key             # Project encryption key (owner-read-only)
 │   └── manifest.json              # Build metadata for caching
-├── .godot/
-│   └── export_credentials.cfg     # Where the encryption key is wired
-├── export_presets.cfg             # Export settings (auto-updated)
+├── export_presets.cfg             # Export settings (you configure template paths)
 └── project.godot                  # Your project (unchanged)
 ```
 
@@ -176,7 +174,7 @@ The encryption key (`encryption.key`) is **owner-read-only** (permissions `0600`
 
 1. Generate and store a single project key in your team's secret manager.
 2. Ensure each development environment and CI job receives that same key securely.
-3. Run `gst create` to compile templates and wire export settings using the shared key.
+3. Run `gst create` to compile templates, then apply the printed setup steps in Godot using the shared key.
 
 ### Import the shared key on another developer machine
 
@@ -204,10 +202,6 @@ Notes:
 - Keep the key byte-for-byte identical across dev and CI.
 - Avoid trailing newline changes when writing the file.
 - Never commit `.gst/encryption.key`.
-
-### CI usage
-
-In CI, inject the same project key from your secret store and write `.gst/encryption.key` before running `gst create`.
 
 ### Repeated Builds
 
@@ -303,13 +297,14 @@ python /path/to/scons/__main__.py \
 - **Multicore:** SCons auto-detects CPU cores and compiles in parallel
 - **Encryption:** Key baked into binary during compilation
 
-### Configuration Injection
+### Manual Setup Guidance
 
-After compilation, the tool injects your encryption key into:
-- **Godot 4.3+:** `.godot/export_credentials.cfg` (dedicated file)
-- **Godot 4.1–4.2:** `export_presets.cfg` (embedded key line)
+After compilation, the tool prints the exact next steps:
+- Set release template path to `.gst/templates/windows_template_release.exe`
+- Set debug template path to `.gst/templates/windows_template_debug.exe`
+- Copy the key from `.gst/encryption.key` into your preset or credentials field for your Godot version
 
-**Byte-preserving:** File formatting and comments are preserved.
+The current branch does not auto-edit Godot config files.
 
 ## What's Next?
 

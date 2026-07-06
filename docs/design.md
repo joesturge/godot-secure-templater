@@ -17,7 +17,7 @@ a single detailed reference to build against.
 5. Toolchain provisioning subsystem
 6. Cryptographic key management
 7. Build/compilation subsystem
-8. Godot `ConfigFile` handling & config injection
+8. Godot `ConfigFile` handling & manual setup guidance
 9. Manifest, idempotency & caching
 10. Platform plugin framework
 11. CLI surface, flags & exit codes
@@ -41,7 +41,7 @@ the SCons build). There is no way to encrypt scripts with the stock downloaded t
 
 Compiling templates from source requires a full native toolchain (a C++ compiler, Python, SCons)
 plus the exact Godot source tree. Setting that up by hand is error-prone and pollutes the
-developer's machine. **This tool automates that provisioning + compile + wire-in, in an isolated,
+developer's machine. **This tool automates that provisioning + compile + setup guidance, in an isolated,
 per-project sandbox.**
 
 ### 1.2 Key domain terms
@@ -93,7 +93,7 @@ create
   → [6] ensure key
   → [7] compile templates    (SCons, staged progress)
   → [9] write/refresh manifest
-  → [8] inject config        (backup-once → atomic write → verify → or rollback)
+  → [8] print setup guidance (template paths + key-file path)
   → [3] prune runtime        [Slice 1, default on success]
   → print success summary
 ```
@@ -352,58 +352,41 @@ opt-in, out-of-disk, compiler error) into actionable messages where possible, an
 
 ---
 
-## 8. Godot `ConfigFile` Handling & Config Injection
+## 8. Godot `ConfigFile` Handling & Manual Setup Guidance
 
-### 8.1 Why this is the highest-risk subsystem
+### 8.1 Why this matters
 `export_presets.cfg` / `export_credentials.cfg` are Godot `ConfigFile` — INI-ish but carrying typed
 literals (`PackedStringArray(...)`, `Dictionary(...)`, resource references, booleans, floats, nested
-quoting). **No mature Go library round-trips this format.** A generic INI/serializer that reorders
-keys, strips comments, or reformats literals will silently corrupt a user's export settings.
+quoting). The default runtime flow now avoids round-tripping these files entirely; it prints the
+manual setup steps instead. The format is still documented here because a future opt-in auto-config
+mode would need to handle it carefully.
 
-### 8.2 Strategy: targeted minimal edits (all slices)
-Do **not** parse-and-round-trip the whole file. Instead:
-1. Read the file as text.
-2. Locate the target `[section]` (e.g. the Windows preset, or `[preset.N.options]`).
-3. Within it, find-or-insert only the specific keys being set.
-4. Rewrite **only** those lines; preserve every other byte (including comments, ordering, and
-   untouched literals) exactly.
+### 8.2 Strategy: manual setup guidance (default)
+Do **not** parse-and-round-trip the whole file in the default flow. Instead:
+1. Print the compiled template paths.
+2. Print the local key file path.
+3. Tell the user which Godot file to edit for their version.
 
-A small, well-tested section/key locator handles the addressing; it understands `ConfigFile` section
-headers and key boundaries but deliberately does **not** attempt to interpret arbitrary typed
-values. If the structure needed for a targeted edit can't be located unambiguously, it **fails
-closed** (`ErrConfigStructureUnrecognized`) rather than writing.
+A future opt-in auto-config mode can revive the section/key locator later, but the default path now
+avoids this complexity.
 
-> A full `ConfigFile` parser is only built if a future slice genuinely needs to *read* complex typed
-> values; injection does not require it.
-
-### 8.3 Injection ordering (transactional shape)
+### 8.3 Manual wiring flow
 ```
-assert(build_succeeded)                     # never inject before a verified compile
-for each target file (presets, credentials):
-    if not exists(file.bak): copy(file -> file.bak)   # backup-once (§8.4)
-    new = targeted_edit(read(file))
-    atomic_write(file, new)                 # temp + fsync + rename (§12)
-verify(files parse-locatable & contain expected keys)
-on any failure: restore(file <- file.bak) for all touched files ; return error
+assert(build_succeeded)                     # never tell the user to wire up a failed build
+print(template_paths)
+print(key_file_path)
+print(version_specific_editor_steps)
 ```
-This guarantees the project is never left with new templates + broken config, or edited config +
-absent templates.
+This keeps the tool from mutating user config while still making the setup reproducible.
 
-### 8.4 Backup-once semantics (fixes the clobber bug)
-A naive "back up on every run" overwrites the pristine original with the tool's own
-already-modified file on the second run. Therefore: **create `.bak` only if it does not already
-exist.** Optionally stamp tool-authored regions with a marker comment so re-runs can distinguish
-their own edits. `clean`/uninstall can offer to restore from `.bak`.
+### 8.4 Backup-once semantics
+The backup-once rule remains relevant only if an opt-in auto-config mode returns later. The default
+flow no longer creates or restores `.bak` files because it does not write the config files at all.
 
-### 8.5 Fields written
-* `export_presets.cfg` → the Windows preset's `custom_template/release` and `custom_template/debug`
-  = absolute (or project-relative, configurable) paths to the compiled templates.
-* Encryption key target, **version-gated** via a `CredentialWriter` selected by version range
-  `[Slice 1 for multi-era; Slice 0 implements only 4.3+]`:
-  * `4.3+` → `encryption/script_encryption_key` in `.godot/export_credentials.cfg`.
-  * `4.1–4.2` → `script_encryption_key` in the preset inside `export_presets.cfg`.
-  * `<4.1` → error at version resolution.
-  * unknown newer → **fail closed**.
+### 8.5 Fields shown to the user
+* The template paths the user should set in the Windows preset.
+* The key file path (`.gst/encryption.key`) the user should copy from locally.
+* The version-specific Godot file that needs editing for the user's Godot release.
 
 ### 8.6 `CredentialWriter` interface `[Slice 1]`
 ```go
@@ -556,7 +539,7 @@ target needs handling beyond the generic path. **No changes** to `cmd/`, `intern
 | 5 | Integrity/checksum failure |
 | 6 | Insufficient disk |
 | 7 | Build failed |
-| 8 | Config injection failed (rolled back) |
+| 8 | Manual setup guidance failed (future auto-config rolled back) |
 | 9 | Unsupported Godot version/schema (fail-closed) |
 | 10 | Lock held by another run |
 
@@ -579,7 +562,7 @@ crash mid-write cannot truncate or corrupt the original.
 |---|---|---|
 | During download/extract | partial `runtime/.dl` | discarded/re-verified next run; nothing user-facing touched |
 | During compile | no config changes yet | safe; re-run resumes (idempotency/reprovision) |
-| During config injection | `.bak` exists, atomic write | auto-restore from `.bak`; return code 8 |
+| During manual setup guidance | no user-file mutations yet | safe; rerun prints guidance again |
 | Interrupted (Ctrl-C/kill) | lock + temp files | lock reclaimed; temps ignored; user files intact |
 
 ---
@@ -655,10 +638,8 @@ No system env vars, no registry writes, no installs outside `<ProjectRoot>`. Lon
 ## 16. Testing Strategy
 
 ### 16.1 Unit
-* **`ConfigFile` targeted-edit** golden tests: a corpus of real-world `export_presets.cfg` /
-  `export_credentials.cfg` files (with comments, `PackedStringArray`, `Dictionary`, odd quoting) →
-  assert byte-for-byte preservation of everything except the intended keys. This is the
-  highest-value test suite (§8 is the highest-risk subsystem).
+* **Manual setup guidance:** assert the success output includes template paths and key-file path,
+  and does not leak the raw key.
 * **Version parsing:** `config/features` variants; `godot --version` suffix stripping; minor-mismatch
   detection.
 * **Backup-once & rollback:** simulate first/second runs and mid-injection failure; assert the
@@ -683,7 +664,7 @@ No system env vars, no registry writes, no installs outside `<ProjectRoot>`. Lon
 ## 17. Cross-Cutting Invariants (must hold in every slice)
 
 1. Never write outside `<ProjectRoot>`; never modify system env/registry.
-2. Never inject config before a **verified** successful compile.
+2. Never print the raw encryption key value.
 3. Never overwrite an existing `.bak`.
 4. All user-file mutations are atomic (temp + rename).
 5. The key is written only to `encryption.key`(+`.bak`), with restrictive perms, and never logged.
