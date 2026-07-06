@@ -130,6 +130,14 @@ func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.Re
 			logger.Info(line)
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		if loggerWithWarn, ok := logger.(interface{ Warn(string, ...interface{}) }); ok {
+			loggerWithWarn.Warn("stream output read error: %v", err)
+		} else {
+			logger.Info("stream output read error: %v", err)
+		}
+	}
 }
 
 // moveTemplate moves the compiled template from the Godot build directory to templates/.
