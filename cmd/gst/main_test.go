@@ -282,3 +282,49 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	assert.Equal(t, "", checksums["godot_source"], "Legacy placeholder checksums should be normalized to empty for cache compatibility")
 	assert.Len(t, checksums, 3, "Checksum map should include all components")
 }
+
+func TestShouldCheckWindowsPathLimits(t *testing.T) {
+	tests := []struct {
+		name      string
+		hostTuple string
+		want      bool
+	}{
+		{
+			name:      "windows host tuple enables checks",
+			hostTuple: "windows/amd64",
+			want:      true,
+		},
+		{
+			name:      "tuple parsing is case insensitive",
+			hostTuple: "Windows/ARM64",
+			want:      true,
+		},
+		{
+			name:      "tuple parsing trims whitespace",
+			hostTuple: "  windows/amd64  ",
+			want:      true,
+		},
+		{
+			name:      "non windows host skips checks",
+			hostTuple: "linux/amd64",
+			want:      false,
+		},
+		{
+			name:      "invalid tuple skips checks",
+			hostTuple: "windows",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// GIVEN a host tuple string
+
+			// WHEN checking whether windows path limits should run
+			got := shouldCheckWindowsPathLimits(tt.hostTuple)
+
+			// THEN result should match expected host-gating behaviour
+			assert.Equal(t, tt.want, got, "Host tuple should map to expected path-check gating")
+		})
+	}
+}

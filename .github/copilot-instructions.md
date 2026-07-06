@@ -1,5 +1,11 @@
 # Godot Secure Templater (gst) — Developer conventions (compact)
 
+## TDD IS MANDATORY (RED -> GREEN -> REFACTOR)
+- Start with a failing test for behavioural changes.
+- Make the smallest change needed to pass.
+- Refactor only after tests are green.
+- If a change is hard to test, add the nearest executable check instead of skipping test-first work.
+
 This file is a high-level index. Detailed, targeted rules live under `.github/instructions/` and
 are applied by glob via `applyTo` to keep per-file-context small.
 

@@ -175,14 +175,18 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// PHASE 1: CHECK LONG PATHS (Fail Fast)
 	// ============================================================================
 
-	logger.Info("Checking Windows path length limits...")
-	warnings, err := orch.CheckLongPaths()
-	if err != nil {
-		logger.Error("Path check failed: %v", err)
-		return err
-	}
-	for _, w := range warnings {
-		logger.Warn(w)
+	if shouldCheckWindowsPathLimits(hostTuple) {
+		logger.Info("Checking Windows path length limits...")
+		warnings, err := orch.CheckLongPaths()
+		if err != nil {
+			logger.Error("Path check failed: %v", err)
+			return err
+		}
+		for _, w := range warnings {
+			logger.Warn(w)
+		}
+	} else {
+		logger.Info("Skipping Windows-specific path length checks on non-Windows host")
 	}
 
 	// ============================================================================
@@ -402,6 +406,10 @@ func confirmRegenerateKey() (bool, error) {
 
 func detectedHostTuple() string {
 	return platform.DetectHostTuple()
+}
+
+func shouldCheckWindowsPathLimits(hostTuple string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(hostTuple)), "windows/")
 }
 
 func resolveTargetPlatform(raw string) (string, string, *internal.Error) {
