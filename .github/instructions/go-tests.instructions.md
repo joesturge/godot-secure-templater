@@ -4,6 +4,11 @@ applyTo: "**/*_test.go"
 
 # Test File Requirements
 
+## Default Workflow
+- Treat red → green → refactor as the normal path for behaviour changes.
+- Start from a failing test when adding or changing behaviour, then make the smallest code change that passes it.
+- Keep refactors separate from behaviour changes unless the refactor is required to make the test pass.
+
 ## BDD Comments (MANDATORY)
 ```go
 func TestName(t *testing.T) {

@@ -14,6 +14,7 @@ Key repo conventions (short):
 - No unsafe INI round-trips: `internal/config` must perform byte-preserving, targeted edits only.
 - Crypto: AES-256 keys via `crypto/rand`, owner-only perms, atomic writes; never print raw keys in logs.
 - Toolchain: pinned dependencies in code; manifest-based caching (`manifest.json`) is the CI cache key.
-- TDD: all behavioural changes follow red → green → refactor; write a failing test first, make it pass with minimal code, then clean up.
+- TDD is the default: for behavioural changes, write or update a failing test first, make the smallest code change needed to go green, then refactor only after the test passes.
+- Do not widen scope before the red → green step; if a change is hard to test, add the nearest executable check rather than skipping the test-first workflow.
 
 If you need to change a specific rule, add or edit the corresponding file in `.github/instructions/`.

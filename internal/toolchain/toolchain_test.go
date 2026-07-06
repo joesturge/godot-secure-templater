@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,54 +16,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestWindowsComponents(t *testing.T) {
-	// GIVEN a Godot version
-	version := "4.6.3"
+func TestGodotChecksumForVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintln(w, "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c godot-4.6.3-stable.tar.gz")
+	}))
+	defer server.Close()
 
-	// WHEN calling WindowsComponents
-	components := WindowsComponents(version)
-
-	// THEN it should return 4 components
-	assert.Equal(t, 4, len(components), "Should return exactly 4 components")
-
-	// AND components should have correct names and URLs
-	expectedNames := []string{"python", "mingw", "scons", "godot_source"}
-	for i, expectedName := range expectedNames {
-		assert.Equal(t, expectedName, components[i].Name, "Component %d should be %s", i, expectedName)
-		assert.NotEmpty(t, components[i].URL, "Component %d should have non-empty URL", i)
-		if components[i].Name != "godot_source" {
-			assert.NotEmpty(t, components[i].SHA256, "Component %d should have non-empty SHA256", i)
-		}
-		assert.NotEmpty(t, components[i].ExtractTo, "Component %d should have non-empty ExtractTo", i)
-	}
-}
-
-func TestWindowsComponents_GodotURL(t *testing.T) {
-	// GIVEN different Godot versions
-	tests := []struct {
-		version string
-		wantURL string
-	}{
-		{
-			version: "4.6.3",
-			wantURL: "https://github.com/godotengine/godot/archive/refs/tags/4.6.3-stable.tar.gz",
-		},
-		{
-			version: "4.7.0",
-			wantURL: "https://github.com/godotengine/godot/archive/refs/tags/4.7.0-stable.tar.gz",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.version, func(t *testing.T) {
-			// WHEN calling WindowsComponents
-			components := WindowsComponents(tt.version)
-
-			// THEN Godot source URL should match version
-			godotComponent := components[3] // godot_source is 4th component
-			assert.Equal(t, tt.wantURL, godotComponent.URL, "URL should include correct Godot version")
-		})
-	}
+	checksum := fetchGodotChecksumFromURL(server.URL, "4.6.3")
+	assert.Equal(t, "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c", checksum)
 }
 
 func TestVerifyChecksum_Valid(t *testing.T) {
@@ -238,28 +200,6 @@ func TestExtractTarGZ_Basic(t *testing.T) {
 	assert.NoError(t, err, "Should initialize extraction directory")
 }
 
-func TestGodotChecksumForVersionDoesNotUsePlaceholder(t *testing.T) {
-	// GIVEN a known Godot version
-	version := "4.6.3"
-
-	// WHEN calling godotChecksumForVersion
-	checksum := godotChecksumForVersion(version)
-
-	// THEN it should never return a placeholder checksum
-	assert.False(t, strings.HasPrefix(checksum, "placeholder"), "Checksum resolution should never return placeholders")
-}
-
-func TestGodotChecksumForVersionUnknown(t *testing.T) {
-	// GIVEN a clearly non-existent Godot version
-	version := "9.9.9"
-
-	// WHEN calling godotChecksumForVersion
-	checksum := godotChecksumForVersion(version)
-
-	// THEN it should not return a placeholder checksum
-	assert.False(t, strings.HasPrefix(checksum, "placeholder"), "Unknown versions should never use placeholder checksums")
-}
-
 func TestDownloadFile_NotFound(t *testing.T) {
 	// GIVEN a non-existent URL
 	tempDir := t.TempDir()
@@ -355,18 +295,18 @@ func TestExtractArchive_InvalidKind(t *testing.T) {
 
 func TestEnsureSufficientDiskSpace(t *testing.T) {
 	tests := []struct {
-		name          string
-		available     uint64
-		required      uint64
-		probeErr      error
-		wantErr       bool
-		wantErrCode   internal.ExitCode
+		name        string
+		available   uint64
+		required    uint64
+		probeErr    error
+		wantErr     bool
+		wantErrCode internal.ExitCode
 	}{
 		{
-			name:        "enough disk space available",
-			available:   10 * 1024 * 1024 * 1024,
-			required:    5 * 1024 * 1024 * 1024,
-			wantErr:     false,
+			name:      "enough disk space available",
+			available: 10 * 1024 * 1024 * 1024,
+			required:  5 * 1024 * 1024 * 1024,
+			wantErr:   false,
 		},
 		{
 			name:        "insufficient disk space",

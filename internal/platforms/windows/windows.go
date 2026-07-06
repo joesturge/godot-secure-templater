@@ -6,7 +6,6 @@ import (
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/platform"
-	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
 
 func init() {
@@ -17,10 +16,10 @@ func init() {
 			"windows/amd64": {},
 		},
 		Components: func(version string) ([]internal.Artifact, *internal.Error) {
-			return toolchain.WindowsComponents(version), nil
+			return Components(version), nil
 		},
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
-			return builder.CompileTemplates(ctx, key)
+			return builder.CompileTemplates(ctx, key, buildCommand, sourceTemplateName, destinationTemplateName)
 		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 			return filepath.Join(workspace.Templates, "windows_template_release.exe"), filepath.Join(workspace.Templates, "windows_template_debug.exe")
