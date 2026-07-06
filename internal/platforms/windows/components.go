@@ -7,6 +7,8 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
 
+var resolveGodotChecksum = toolchain.GodotChecksumForVersion
+
 // Components returns the toolchain components for a Windows target.
 func Components(version string) []internal.Artifact {
 	return []internal.Artifact{
@@ -34,7 +36,7 @@ func Components(version string) []internal.Artifact {
 		{
 			Name:      "godot_source",
 			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s-stable.tar.gz", version),
-			SHA256:    toolchain.GodotChecksumForVersion(version),
+			SHA256:    resolveGodotChecksum(version),
 			ExtractTo: "godot_source",
 			Kind:      internal.ArchiveTarGZ,
 		},

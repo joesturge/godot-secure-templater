@@ -8,6 +8,7 @@ import (
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/platform"
+	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
 
 func TestWindowsPluginRegistersDefinition(t *testing.T) {
@@ -33,6 +34,11 @@ func TestWindowsPluginRegistersDefinition(t *testing.T) {
 }
 
 func TestWindowsPluginComponents(t *testing.T) {
+	resolveGodotChecksum = func(version string) string { return "stub-checksum" }
+	defer func() {
+		resolveGodotChecksum = toolchain.GodotChecksumForVersion
+	}()
+
 	// GIVEN a registered windows platform definition
 	def, ok := platform.Lookup("windows")
 	assert.True(t, ok, "Windows platform should exist in registry for component-resolution tests")
@@ -53,6 +59,12 @@ func TestWindowsPluginComponents(t *testing.T) {
 	assert.True(t, names["mingw"], "Windows component list should include mingw artifact")
 	assert.True(t, names["scons"], "Windows component list should include scons artifact")
 	assert.True(t, names["godot_source"], "Windows component list should include godot_source artifact")
+
+	for _, c := range components {
+		if c.Name == "godot_source" {
+			assert.Equal(t, "stub-checksum", c.SHA256, "Godot checksum should come from resolver callback")
+		}
+	}
 }
 
 func TestWindowsPluginArtifactPaths(t *testing.T) {

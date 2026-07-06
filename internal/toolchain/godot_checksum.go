@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
+
+var checksumHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 // GodotChecksumForVersion returns a checksum for a Godot version from GitHub release metadata.
 func GodotChecksumForVersion(version string) string {
@@ -22,7 +25,7 @@ func fetchGodotChecksumFromGitHub(version string) string {
 }
 
 func fetchGodotChecksumFromURL(checksumsURL, version string) string {
-	resp, err := http.Get(checksumsURL)
+	resp, err := checksumHTTPClient.Get(checksumsURL)
 	if err != nil {
 		return ""
 	}
@@ -51,6 +54,10 @@ func fetchGodotChecksumFromURL(checksumsURL, version string) string {
 		if filename == targetName {
 			return parts[0]
 		}
+	}
+
+	if scanner.Err() != nil {
+		return ""
 	}
 
 	return ""

@@ -181,8 +181,8 @@ func TestErrorUnsupportedPlatformTupleFactory(t *testing.T) {
 	assert.Equal(t, ExitUsageError, err.Code, "Exit code should be ExitUsageError")
 	// AND the tuple should be included in the message
 	assert.Contains(t, err.Message, tuple, "Message should contain the unsupported tuple")
-	// AND details should document the currently supported tuple
-	assert.Contains(t, err.Details, "windows/amd64", "Details should include the currently supported tuple")
+	// AND details should document the generic expected tuple format
+	assert.Contains(t, err.Details, "os/arch", "Details should include the expected tuple format")
 }
 
 func TestErrorUnknownPlatformFactory(t *testing.T) {

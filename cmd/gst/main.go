@@ -12,10 +12,9 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/cleanup"
 	"github.com/joemi/godot-secure-templater/internal/crypto"
 	"github.com/joemi/godot-secure-templater/internal/manifest"
-	"github.com/joemi/godot-secure-templater/internal/platform"
-	_ "github.com/joemi/godot-secure-templater/internal/platforms/linux"
-	_ "github.com/joemi/godot-secure-templater/internal/platforms/windows"
 	"github.com/joemi/godot-secure-templater/internal/pipeline"
+	"github.com/joemi/godot-secure-templater/internal/platform"
+	_ "github.com/joemi/godot-secure-templater/internal/platforms/windows"
 	"github.com/joemi/godot-secure-templater/internal/project"
 	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
@@ -159,16 +158,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	logger.Info("Building pipeline orchestrator...")
 	opts := &pipeline.Options{
-		ProjectRoot:   projectRoot,
-		GodotVersion:  flagGodotVersion,
+		ProjectRoot:     projectRoot,
+		GodotVersion:    flagGodotVersion,
 		GodotEditorPath: flagGodotEditorPath,
-		ProjectMinor:  projectMinor,
-		Platform:      targetPlatform,
-		KeepRuntime:   flagKeepRuntime,
-		ForceRebuild:  flagForceRebuild,
-		RegenerateKey: flagRegenerateKey,
-		Force:         flagForce,
-		Verbose:       flagVerbose,
+		ProjectMinor:    projectMinor,
+		Platform:        targetPlatform,
+		KeepRuntime:     flagKeepRuntime,
+		ForceRebuild:    flagForceRebuild,
+		RegenerateKey:   flagRegenerateKey,
+		Force:           flagForce,
+		Verbose:         flagVerbose,
 	}
 	orch := pipeline.NewOrchestrator(opts)
 

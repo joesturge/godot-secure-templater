@@ -95,8 +95,6 @@ func NormalizeTuple(input string) string {
 	switch tuple {
 	case "windows":
 		return "windows/amd64"
-	case "linux":
-		return "linux/amd64"
 	}
 
 	return tuple

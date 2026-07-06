@@ -64,18 +64,11 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}(archivePath)
 
 		if art.SHA256 == "" {
-			if art.Name != "godot_source" {
-				return &internal.Error{
-					Code:    internal.ExitChecksumMismatch,
-					Message: fmt.Sprintf("No checksum available for %s", art.Name),
-					Details: "Provisioning requires checksum metadata for pinned toolchain artifacts.",
-				}
+			return &internal.Error{
+				Code:    internal.ExitChecksumMismatch,
+				Message: fmt.Sprintf("No checksum available for %s", art.Name),
+				Details: "Failed to resolve checksum metadata for this artifact. Aborting to avoid unverified downloads.",
 			}
-
-			ctx.Logger.Warn(
-				"No checksum metadata found for Godot %s source archive; continuing for compatibility",
-				ctx.Godot.Patch,
-			)
 		} else {
 			ctx.Logger.Debug("Verifying checksum for %s", art.Name)
 			if err := VerifyChecksum(archivePath, art.SHA256); err != nil {
@@ -129,8 +122,8 @@ func isProvisionedAndValid(targetDir, name string) bool {
 		knownRootMarkers := map[string]bool{
 			"SConstruct": true,
 			"version.py": true,
-			"core":      true,
-			"platform":  true,
+			"core":       true,
+			"platform":   true,
 		}
 
 		for _, entry := range entries {

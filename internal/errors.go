@@ -116,7 +116,7 @@ var (
 		return &Error{
 			Code:    ExitUsageError,
 			Message: fmt.Sprintf("Unsupported platform tuple: %s", tuple),
-			Details: "Currently supported target tuple: windows/amd64. This value defaults to detected host tuple (GOOS/GOARCH).",
+			Details: "Expected tuple format is os/arch (for example, windows/amd64 or linux/amd64). This value defaults to detected host tuple (GOOS/GOARCH).",
 		}
 	}
 

@@ -105,11 +105,11 @@ func TestResolveTargetPlatform(t *testing.T) {
 			wantErr:      false,
 		},
 		{
-			name:         "linux tuple resolves to linux platform",
+			name:         "linux tuple is unknown when plugin is not registered",
 			input:        "linux/amd64",
 			wantTuple:    "linux/amd64",
-			wantPlatform: "linux",
-			wantErr:      false,
+			wantPlatform: "",
+			wantErr:      true,
 		},
 		{
 			name:         "unknown tuple unsupported",
@@ -282,4 +282,3 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	assert.Equal(t, "", checksums["godot_source"], "Legacy placeholder checksums should be normalized to empty for cache compatibility")
 	assert.Len(t, checksums, 3, "Checksum map should include all components")
 }
-
