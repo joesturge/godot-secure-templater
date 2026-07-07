@@ -89,38 +89,12 @@ func TestWindowsPluginSuccessNextSteps(t *testing.T) {
 	assert.Contains(t, steps[4], "encryption.key", "Windows success steps should mention the key file path")
 }
 
-func TestWindowsHostLinuxTargetRegistration(t *testing.T) {
-	// GIVEN the windows plugin package init has registered host/target definitions
+func TestWindowsHostLinuxTargetNotRegistered(t *testing.T) {
+	// GIVEN the windows plugin package init has registered only supported tuples
 
 	// WHEN looking up the windows-host linux-target tuple pair
-	def, ok := platform.LookupHostTarget("windows/amd64", "linux/amd64")
+	_, ok := platform.LookupHostTarget("windows/amd64", "linux/amd64")
 
-	// THEN the registry should contain the linux target entry for windows host
-	assert.True(t, ok, "Windows plugin should register a windows/amd64 -> linux/amd64 tuple definition")
-	if !ok {
-		t.FailNow()
-	}
-	assert.Equal(t, "windows/amd64", def.HostTuple, "Host tuple should match windows/amd64")
-	assert.Equal(t, "linux/amd64", def.TargetTuple, "Target tuple should match linux/amd64")
-
-	// AND callbacks should exist to satisfy the platform definition contract
-	assert.NotNil(t, def.Components, "Linux-target tuple entry should provide a component resolver callback")
-	assert.NotNil(t, def.Compile, "Linux-target tuple entry should provide a compile callback")
-	assert.NotNil(t, def.ArtifactPaths, "Linux-target tuple entry should provide artifact-path resolver callback")
-	assert.NotNil(t, def.SuccessNextSteps, "Linux-target tuple entry should provide success-next-steps callback")
-
-	// AND component resolution should be wired to real toolchain inputs
-	components, err := def.Components("4.6.3")
-	assert.Nil(t, err, "Linux-target tuple entry should resolve components without typed errors")
-	assert.NotEmpty(t, components, "Linux-target tuple entry should return build components")
-
-	// AND artifact paths and user guidance should reflect linux templates
-	workspace := &internal.Workspace{Templates: filepath.Join("/tmp", "project", ".gst", "templates")}
-	releasePath, debugPath := def.ArtifactPaths(workspace)
-	assert.Equal(t, filepath.Join("/tmp", "project", ".gst", "templates", "linux_template_release.x86_64"), releasePath, "Linux tuple release artifact path should use linux filename")
-	assert.Equal(t, filepath.Join("/tmp", "project", ".gst", "templates", "linux_template_debug.x86_64"), debugPath, "Linux tuple debug artifact path should use linux filename")
-
-	steps := def.SuccessNextSteps()
-	assert.NotEmpty(t, steps, "Linux-target tuple should provide success guidance")
-	assert.Contains(t, steps[1], "Linux export preset", "Linux tuple steps should guide Linux preset wiring")
+	// THEN the registry should not advertise linux as supported on a Windows host yet
+	assert.False(t, ok, "Windows plugin should not register a windows/amd64 -> linux/amd64 tuple definition yet")
 }

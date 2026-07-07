@@ -82,6 +82,9 @@ templates. Therefore the tool:
   machine-readable output.
 * **External services:** Godot GitHub Releases API (version + source), toolchain artifact hosts
   (Python, MinGW-w64, SCons).
+* **Upstream build constraints:** host/target claims in this tool should stay within Godot's
+  documented build paths. For example, the standard `platform=linuxbsd` flow is documented for
+  Linux and other Unix variants, not for Windows-hosted builds.
 
 ### 2.2 High-level execution pipeline
 ```
@@ -218,6 +221,17 @@ type Resolver interface {
 
 ### 4.4 Output
 Resolution always echoes, e.g. `Detected Godot 4.4 → resolved 4.4.2 via local editor`, and records
+
+### 4.5 Host/target matrix boundary
+The implementation should track the easy matrix that upstream Godot already supports:
+
+* Windows templates on Windows hosts.
+* Linux templates on Linux or other POSIX hosts via `platform=linuxbsd`.
+* Web templates on hosts that can run the Emscripten toolchain.
+
+Unsupported host/target claims should fail early instead of being exposed speculatively. In
+particular, Windows-hosted Linux template builds are not part of the standard upstream `linuxbsd`
+path and should not be advertised as a supported tuple without a separate cross-compilation design.
 `{minor, patch, method, source}` in the manifest `[Slice 1]`.
 
 ---

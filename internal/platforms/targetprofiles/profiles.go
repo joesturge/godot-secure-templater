@@ -44,15 +44,5 @@ func SConsHostTargetProfiles() []SConsTargetProfile {
 			DebugSetting:   ".gst/templates/windows_template_debug.exe",
 			ExtraSConsArgs: []string{"d3d12=no"},
 		},
-		{
-			TargetTuple:    "linux/amd64",
-			SConsPlatform:  "linuxbsd",
-			SourceDebug:    "godot.linuxbsd.template_debug.x86_64",
-			SourceRelease:  "godot.linuxbsd.template_release.x86_64",
-			DestinationFmt: "linux_%s.x86_64",
-			PresetLabel:    "Linux",
-			ReleaseSetting: ".gst/templates/linux_template_release.x86_64",
-			DebugSetting:   ".gst/templates/linux_template_debug.x86_64",
-		},
 	}
 }

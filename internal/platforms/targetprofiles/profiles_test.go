@@ -14,10 +14,9 @@ func TestSConsHostTargetProfiles(t *testing.T) {
 	// WHEN reading supported profiles
 	profiles := SConsHostTargetProfiles()
 
-	// THEN windows and linux targets should be declared
-	assert.Len(t, profiles, 2, "SConsHostTargetProfiles should include two target profiles")
-	assert.Equal(t, "windows/amd64", profiles[0].TargetTuple, "First profile should target windows/amd64")
-	assert.Equal(t, "linux/amd64", profiles[1].TargetTuple, "Second profile should target linux/amd64")
+	// THEN only the currently supported Windows target should be declared
+	assert.Len(t, profiles, 1, "SConsHostTargetProfiles should include one target profile")
+	assert.Equal(t, "windows/amd64", profiles[0].TargetTuple, "Profile should target windows/amd64")
 }
 
 func TestSConsTargetProfileTemplateNames(t *testing.T) {

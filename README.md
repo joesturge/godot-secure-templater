@@ -19,7 +19,7 @@ $ gst create
 - **Result:** Your game scripts and resources are encrypted in the final binary
 
 ### 🛠️ Automated Toolchain
-- Downloads and verifies Python, MinGW, SCons, and Godot source
+- Downloads Python, MinGW, SCons, and Godot source into an isolated workspace
 - Runs in `.gst/` (isolated workspace)
 - Cleans up after build; use `--keep-runtime` for debugging
 - **Result:** No manual compiler installation ever
@@ -42,8 +42,9 @@ Use one shared project key, distributed securely via your secret manager or CI.
 - Force rebuild with `--force-rebuild` if needed
 
 ### 📍 Platform-Ready
-- **Now:** Windows Desktop (4.3+, real SCons compilation with AES-256 encryption)
-- **Next:** Linux target is planned, not yet implemented
+- **Now:** Windows Desktop on Windows hosts (4.3+, real SCons compilation with AES-256 encryption)
+- **Easy matrix next:** Linux templates on Linux or other POSIX hosts, and Web templates on hosts that can run Emscripten
+- **Not planned as the default path:** Windows-hosted Linux template builds through Godot's standard `linuxbsd` SCons flow
 
 ---
 
@@ -78,7 +79,7 @@ Clone the repository, then use the host-appropriate build command in [CONTRIBUTI
 
 ### Requires
 - Go 1.21+
-- Windows 10/11 host (for Windows templates)
+- Windows 10/11 host (for the currently supported Windows template workflow)
   - MinGW 14.2.0 downloaded and provisioned automatically
   - Python 3.11 embedded distribution (no system Python needed)
   - SCons 4.4.0 provisioned automatically
@@ -109,7 +110,7 @@ gst create
 - If you omit `--godot-version`, `gst` tries a local Godot editor on `PATH` (or `--godot-editor-path`), then the latest stable release for the project minor line from GitHub, then prompts interactively.
 - For CI or automation, always set `--godot-version` to avoid prompts and version drift.
 - `--godot-editor-path PATH` — use this specific Godot editor binary for local version detection.
-- `--platform TUPLE` — target platform tuple for the build. Defaults to the detected host tuple, for example `windows/amd64`.
+- `--platform TUPLE` — target platform tuple for the build. Today, the supported tuple is `windows/amd64` on a Windows host.
 - `--verbose` — Show detailed build output
 - `--keep-runtime` — Preserve toolchain after build (useful for repeated builds or debugging)
 - `--force-rebuild` — Skip cache; always recompile templates
@@ -295,7 +296,7 @@ The current branch does not auto-edit Godot config files.
 
 ### Future Releases
 
-- **Slice 2 (Multi-Platform):** Linux, Web, macOS/iOS, Android (same `gst` command)
+- **Slice 2 (Multi-Platform):** Linux on POSIX hosts, Web with Emscripten, macOS/iOS, Android (same `gst` command, within upstream Godot host/toolchain constraints)
 - **Slice 3 (CI/Automation):** `--non-interactive`, `--json`, secret-safe logging
 
 ### Contributing
