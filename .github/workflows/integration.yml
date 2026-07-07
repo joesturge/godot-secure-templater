@@ -25,6 +25,14 @@ jobs:
             binary_ext: .exe
             expected_release: windows_template_release.exe
             expected_debug: windows_template_debug.exe
+          - name: linux host -> linux target
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            target_tuple: linux/amd64
+            binary_ext: ""
+            expected_release: linux_template_release.x86_64
+            expected_debug: linux_template_debug.x86_64
 
     defaults:
       run:

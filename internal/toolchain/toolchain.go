@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
+	"github.com/ulikunitz/xz"
 )
 
 // Provision downloads and verifies toolchain components, extracting them into runtime/.
@@ -179,6 +180,8 @@ func extractArchive(archivePath, targetDir string, kind internal.ArchiveKind) er
 		return extractZip(archivePath, targetDir)
 	case internal.ArchiveTarGZ:
 		return extractTarGZ(archivePath, targetDir)
+	case internal.ArchiveTarXZ:
+		return extractTarXZ(archivePath, targetDir)
 	case internal.ArchiveRaw:
 		return fmt.Errorf("raw file copy not yet implemented")
 	default:
@@ -325,6 +328,100 @@ func extractTarGZ(gzPath, targetDir string) error {
 		}
 
 		// Prevent directory traversal
+		fpath := filepath.Join(targetDir, name)
+		if !strings.HasPrefix(fpath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+				return err
+			}
+
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(outFile, tr); err != nil {
+				_ = outFile.Close()
+				return err
+			}
+			if err := outFile.Close(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// extractTarXZ extracts a tar.xz archive, stripping the top-level directory if it's a single root.
+func extractTarXZ(xzPath, targetDir string) error {
+	file, err := os.Open(xzPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	xzr, err := xz.NewReader(file)
+	if err != nil {
+		return err
+	}
+
+	tr := tar.NewReader(xzr)
+	topLevelDirs := make(map[string]bool)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		parts := strings.Split(strings.TrimRight(header.Name, "/"), "/")
+		if len(parts) > 0 && parts[0] != "" {
+			topLevelDirs[parts[0]] = true
+		}
+	}
+
+	stripOneLevel := len(topLevelDirs) == 1
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
+	xzr, err = xz.NewReader(file)
+	if err != nil {
+		return err
+	}
+
+	tr = tar.NewReader(xzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		name := header.Name
+		if stripOneLevel {
+			parts := strings.Split(strings.TrimRight(name, "/"), "/")
+			if len(parts) > 1 {
+				name = strings.Join(parts[1:], "/")
+			} else if len(parts) == 1 && parts[0] != "" {
+				continue
+			}
+		}
+
 		fpath := filepath.Join(targetDir, name)
 		if !strings.HasPrefix(fpath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
 			continue

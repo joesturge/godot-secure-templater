@@ -1,4 +1,4 @@
-package hostwindows
+package hostlinux
 
 import (
 	"fmt"
@@ -7,23 +7,23 @@ import (
 	platformhelpers "github.com/joemi/godot-secure-templater/internal/platforms"
 )
 
-// Components returns the toolchain components for a Windows target.
+// Components returns the toolchain components for a Linux target on a Linux host.
 func Components(version string) []internal.Artifact {
 	releaseTag := platformhelpers.GodotReleaseTagForVersion(version)
 	return []internal.Artifact{
 		{
 			Name:      "python",
-			URL:       "https://www.python.org/ftp/python/3.11.0/python-3.11.0-embed-amd64.zip",
-			SHA256:    "68fb03784e8545c35bcb5f240b696e6e676ca3e5fb90926ed0673d564299fb94",
+			URL:       "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.11.15%2B20260623-x86_64-unknown-linux-gnu-install_only.tar.gz",
+			SHA256:    "60295e3e703b48c270e8d8c685195b8d5c2f0b8a596c1a910d7e24a2cc55afdd",
 			ExtractTo: "python",
-			Kind:      internal.ArchiveZip,
+			Kind:      internal.ArchiveTarGZ,
 		},
 		{
 			Name:      "zig",
-			URL:       "https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip",
-			SHA256:    "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e",
+			URL:       "https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz",
+			SHA256:    "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
 			ExtractTo: "zig",
-			Kind:      internal.ArchiveZip,
+			Kind:      internal.ArchiveTarXZ,
 		},
 		{
 			Name:      "scons",

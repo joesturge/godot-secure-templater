@@ -207,6 +207,16 @@ func resolvePythonExecutable(runtimeDir string) (string, error) {
 	if _, err := os.Stat(pythonExe); err != nil {
 		pythonExe = filepath.Join(runtimeDir, "python", "python")
 	}
+	if _, err := os.Stat(pythonExe); err == nil {
+		return pythonExe, nil
+	}
+
+	for _, candidate := range []string{"python3", "python"} {
+		if resolved, err := exec.LookPath(candidate); err == nil {
+			return resolved, nil
+		}
+	}
+
 	_, err := os.Stat(pythonExe)
 	return pythonExe, err
 }

@@ -4,8 +4,8 @@ This guide covers the current workflow, expectations, and quality bar for this r
 
 ## Current Scope
 
-- Supported build target: Windows templates on Windows hosts.
-- Linux and Web targets are not yet implemented here. Planned additions stay within upstream Godot host/toolchain constraints.
+- Supported build targets: Windows templates on Windows hosts, and Linux templates on Linux/POSIX hosts.
+- Web is not yet implemented here. Planned additions stay within upstream Godot host/toolchain constraints.
 - `gst create` compiles templates and prints manual setup guidance for Godot export configuration.
 
 ## Development Setup
@@ -36,7 +36,7 @@ Recommended commands:
 
 ```bash
 # focused packages (example)
-go test ./cmd/gst ./internal/platforms/hostwindows ./internal/toolchain
+go test ./cmd/gst ./internal/platforms/hostwindows ./internal/platforms/hostlinux ./internal/toolchain
 
 # full suite
 go test ./...

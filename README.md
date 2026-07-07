@@ -42,9 +42,15 @@ Use one shared project key, distributed securely via your secret manager or CI.
 - Force rebuild with `--force-rebuild` if needed
 
 ### 📍 Platform-Ready
-- **Now:** Windows Desktop on Windows hosts (4.3+, real SCons compilation with AES-256 encryption)
-- **Easy matrix next:** Linux templates on Linux or other POSIX hosts, and Web templates on hosts that can run Emscripten
-- **Not planned as the default path:** Windows-hosted Linux template builds through Godot's standard `linuxbsd` SCons flow
+| Host                    | Target                                | Status                   | Notes                                                                                                                               |
+| ----------------------- | ------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Windows                 | Windows                               | Supported here           | Current end-to-end path.                                                                                                            |
+| Linux / POSIX           | Linux                                 | Supported here           | Uses Godot's standard `linuxbsd` SCons flow on POSIX hosts.                                                                         |
+| Windows / Linux / macOS | Android export templates              | Planned here             | Godot documents Android compilation on all three hosts with the Android SDK/NDK, but this repo does not implement it yet.           |
+| Windows / Linux / macOS | Web export templates                  | Planned here             | Requires the Emscripten SDK; not implemented here yet.                                                                              |
+| Windows / Linux / macOS | Web local serving / browser test loop | Planned here             | Godot's Web flow also expects a local web server for testing the generated output.                                                  |
+| Linux / macOS           | Windows Desktop                       | Upstream-capable example | Godot documents Windows cross-compilation from Linux/macOS via MinGW or MinGW-LLVM, but this repo does not implement that path yet. |
+| Windows                 | Linux                                 | Not planned (yet)        | Godot's standard `linuxbsd` path is not a normal Windows-hosted build flow.                                                         |
 
 ---
 
@@ -79,9 +85,9 @@ Clone the repository, then use the host-appropriate build command in [CONTRIBUTI
 
 ### Requires
 - Go 1.21+
-- Windows 10/11 host (for the currently supported Windows template workflow)
-  - MinGW 14.2.0 downloaded and provisioned automatically
-  - Python 3.11 embedded distribution (no system Python needed)
+- Windows 10/11 host for Windows templates, or Linux/POSIX host for Linux templates
+  - Python 3.11 runtime provisioned automatically
+  - Zig 0.16.0 provisioned automatically
   - SCons 4.4.0 provisioned automatically
 - Internet connection (first run downloads ~1GB of toolchain)
 - 5+ GB disk space (toolchain + source + build artefacts)
@@ -90,9 +96,9 @@ Clone the repository, then use the host-appropriate build command in [CONTRIBUTI
 
 ## Quick Start
 
-### 1. Create a Windows export preset
+### 1. Create an export preset
 
-Open your project in Godot, go to **Project → Export**, create or select a **Windows Desktop** preset, then save `export_presets.cfg`.
+Open your project in Godot, go to **Project → Export**, create or select the preset for the target you are building, then save `export_presets.cfg`.
 
 `gst` prints the template paths you will paste into that preset.
 
@@ -103,14 +109,14 @@ cd /path/to/your/game
 gst create
 ```
 
-`gst` will compile or reuse the Windows templates, generate or reuse `.gst/encryption.key`, and print the remaining setup steps.
+`gst` will compile or reuse the target templates, generate or reuse `.gst/encryption.key`, and print the remaining setup steps.
 
 **Flags:**
 - `--godot-version VERSION` (recommended) — explicit Godot version to compile. Accepts `X.Y` or `X.Y.Z` and must match the project minor line.
 - If you omit `--godot-version`, `gst` tries a local Godot editor on `PATH` (or `--godot-editor-path`), then the latest stable release for the project minor line from GitHub, then prompts interactively.
 - For CI or automation, always set `--godot-version` to avoid prompts and version drift.
 - `--godot-editor-path PATH` — use this specific Godot editor binary for local version detection.
-- `--platform TUPLE` — target platform tuple for the build. Today, the supported tuple is `windows/amd64` on a Windows host.
+- `--platform TUPLE` — target platform tuple for the build. Today, the supported tuples are `windows/amd64` on Windows hosts and `linux/amd64` on Linux/POSIX hosts. Defaults to host if not supplied.
 - `--verbose` — Show detailed build output
 - `--keep-runtime` — Preserve toolchain after build (useful for repeated builds or debugging)
 - `--force-rebuild` — Skip cache; always recompile templates
@@ -119,7 +125,7 @@ gst create
 
 ### 3. Export your game
 
-Open **Project → Export** again, confirm the **Windows Desktop** preset, then export.
+Open **Project → Export** again, confirm the preset that matches the templates you built, then export.
 
 Your build uses the custom templates and encryption key you configured.
 

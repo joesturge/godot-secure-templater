@@ -105,11 +105,11 @@ func TestResolveTargetPlatform(t *testing.T) {
 			wantErr:      false,
 		},
 		{
-			name:         "linux tuple unsupported",
+			name:         "linux tuple supported",
 			input:        "linux/amd64",
 			wantTuple:    "linux/amd64",
-			wantPlatform: "",
-			wantErr:      true,
+			wantPlatform: "linux",
+			wantErr:      false,
 		},
 		{
 			name:         "unknown tuple unsupported",

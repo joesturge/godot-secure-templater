@@ -1,4 +1,4 @@
-package hostwindows
+package hostlinux
 
 import (
 	"path/filepath"
@@ -9,11 +9,11 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
 )
 
-const hostTuple = "windows/amd64"
+const hostTuple = "linux/amd64"
 
 func init() {
 	for _, profile := range targetprofiles.SConsHostTargetProfiles() {
-		if profile.TargetTuple != "windows/amd64" {
+		if profile.TargetTuple != "linux/amd64" {
 			continue
 		}
 		platform.Register(platform.Definition{

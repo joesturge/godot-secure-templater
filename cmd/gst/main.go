@@ -14,6 +14,7 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/manifest"
 	"github.com/joemi/godot-secure-templater/internal/pipeline"
 	"github.com/joemi/godot-secure-templater/internal/platform"
+	_ "github.com/joemi/godot-secure-templater/internal/platforms/hostlinux"
 	_ "github.com/joemi/godot-secure-templater/internal/platforms/hostwindows"
 	"github.com/joemi/godot-secure-templater/internal/project"
 	"github.com/joemi/godot-secure-templater/internal/toolchain"

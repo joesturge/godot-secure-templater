@@ -60,6 +60,7 @@ type ArchiveKind int
 const (
 	ArchiveZip ArchiveKind = iota
 	ArchiveTarGZ
+	ArchiveTarXZ
 	ArchiveRaw
 )
 
