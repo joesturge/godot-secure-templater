@@ -1,22 +1,11 @@
 # Contributing to Godot Secure Templater
 
-Thank you for contributing. This guide explains the current workflow, expectations, and quality bar for this repository.
-
-## TDD-First Is Mandatory
-
-For behavioural changes, use red -> green -> refactor every time.
-
-1. Red: write or update a test that fails for the intended behaviour.
-2. Green: make the smallest production change needed to pass.
-3. Refactor: clean up only after tests are green.
-
-Do not bundle unrelated refactors into the red -> green step.
-If a change is difficult to test directly, add the nearest executable check rather than skipping test-first development.
+This guide covers the current workflow, expectations, and quality bar for this repository.
 
 ## Current Scope
 
-- Current supported build target: Windows templates.
-- Linux target is not currently implemented.
+- Supported build target: Windows templates.
+- Linux target is not yet implemented.
 - `gst create` compiles templates and prints manual setup guidance for Godot export configuration.
 
 ## Development Setup
@@ -33,6 +22,8 @@ mkdir -p dist
 go build -o dist/gst ./cmd/gst
 ./dist/gst --help
 ```
+
+Use the release-build commands below when you need explicit GOOS/GOARCH output names.
 
 ## Typical Change Workflow
 
@@ -97,7 +88,7 @@ Before requesting review:
 
 ## Release Build Commands
 
-Use these when generating binaries manually:
+Use these when generating binaries manually. The README points here for the canonical source-build commands.
 
 ```bash
 mkdir -p dist

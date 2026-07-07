@@ -1,10 +1,10 @@
 # Godot Secure Templater (gst)
 
-**Secure encrypted Godot export templates, without the toolchain hassle.**
+**Secure encrypted Godot export templates without the toolchain hassle.**
 
 <img width="735" height="342" alt="image" src="https://github.com/user-attachments/assets/3f19bdc2-1719-4cc4-a3bc-ada1d6d9cde2" />
 
-`gst` automates provisioning and compilation of encrypted Godot export templates—all in an isolated workspace within your project. No manual C++ toolchain setup. No Python dependency hell. No SCons config. Just one command.
+`gst` provisions and compiles encrypted Godot export templates in an isolated workspace within your project. No manual C++ toolchain setup, Python dependency hell, or SCons config. Just one command.
 
 ```bash
 $ gst create
@@ -19,15 +19,15 @@ $ gst create
 - **Result:** Your game scripts and resources are encrypted in the final binary
 
 ### 🛠️ Automated Toolchain
-- Downloads and verifies Python, MinGW, SCons, and Godot source automatically
-- Runs everything in `.gst/` (isolated workspace)
-- Cleans up after build (optional `--keep-runtime` for debugging)
+- Downloads and verifies Python, MinGW, SCons, and Godot source
+- Runs in `.gst/` (isolated workspace)
+- Cleans up after build; use `--keep-runtime` for debugging
 - **Result:** No manual compiler installation ever
 
 ### 🚀 One Command to Build and Set Up
 Run `gst create` whenever you need to compile templates and print the setup steps for Godot.
 
-Use one shared project key distributed securely (for example via your secret manager or CI).
+Use one shared project key, distributed securely via your secret manager or CI.
 
 ```
 📋 Note for teammates:
@@ -38,12 +38,12 @@ Use one shared project key distributed securely (for example via your secret man
 
 ### 🔄 Smart Rebuilds
 - Caches build fingerprint (version, checksums, platform)
-- Skips rebuild if inputs haven't changed
+- Skips rebuild when inputs haven't changed
 - Force rebuild with `--force-rebuild` if needed
 
 ### 📍 Platform-Ready
 - **Now:** Windows Desktop (4.3+, real SCons compilation with AES-256 encryption)
-- **Next:** Linux target is planned but not implemented yet
+- **Next:** Linux target is planned, not yet implemented
 
 ---
 
@@ -52,24 +52,16 @@ Use one shared project key distributed securely (for example via your secret man
 ### From GitHub Releases (recommended)
 
 1. Open the [latest release on GitHub](https://github.com/joesturge/godot-secure-templater/releases).
-2. Download the asset for your OS/architecture.
-3. Rename or move it to a location on your PATH.
+2. Download the asset for your OS and CPU.
+3. Move it onto your PATH.
 
-Release asset names:
-- `gst-windows-amd64.exe`
-- `gst-windows-arm64.exe`
-- `gst-linux-amd64`
-- `gst-linux-arm64`
-- `gst-darwin-amd64`
-- `gst-darwin-arm64`
-
-Which one should I download?
-- Most modern Windows PCs (Intel/AMD 64-bit): `gst-windows-amd64.exe`
-- Windows on ARM devices: `gst-windows-arm64.exe`
-- Most modern Linux PCs (Intel/AMD 64-bit): `gst-linux-amd64`
-- Linux on ARM64 devices: `gst-linux-arm64`
-- macOS on Apple Silicon (M1/M2/M3): `gst-darwin-arm64`
-- macOS on older Intel Macs: `gst-darwin-amd64`
+Common downloads:
+- Windows 64-bit: `gst-windows-amd64.exe`
+- Windows ARM64: `gst-windows-arm64.exe`
+- Linux 64-bit: `gst-linux-amd64`
+- Linux ARM64: `gst-linux-arm64`
+- macOS Intel: `gst-darwin-amd64`
+- macOS Apple Silicon: `gst-darwin-arm64`
 
 Windows (PowerShell):
 
@@ -82,15 +74,7 @@ Invoke-WebRequest -Uri $url -OutFile gst.exe
 
 ### From Source
 
-```bash
-git clone https://github.com/joesturge/godot-secure-templater.git
-cd godot-secure-templater
-mkdir -p dist
-go build -o dist/gst ./cmd/gst
-sudo mv dist/gst /usr/local/bin/  # or add to PATH
-```
-
-For contributor and release build commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Clone the repository, then use the host-appropriate build command in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Requires
 - Go 1.21+
@@ -105,26 +89,20 @@ For contributor and release build commands, see [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Quick Start
 
-### 1. Open your project and create an export preset in Godot
+### 1. Create a Windows export preset
 
-1. Open your project in Godot Editor.
-2. Go to **Project → Export**.
-3. Create or select a **Windows Desktop** preset.
-4. Save and close the export dialogue.
+Open your project in Godot, go to **Project → Export**, create or select a **Windows Desktop** preset, then save `export_presets.cfg`.
 
-This creates/updates `export_presets.cfg`, which you will configure using the paths `gst` prints after compilation.
+`gst` prints the template paths you will paste into that preset.
 
-### 2. Run gst to compile templates and prepare key material
+### 2. Run `gst create`
 
 ```bash
 cd /path/to/your/game
 gst create
 ```
 
-`gst` will:
-- compile (or cache-hit) encrypted Windows templates
-- generate or reuse `.gst/encryption.key`
-- print next steps for setting template paths and key usage in Godot
+`gst` will compile or reuse the Windows templates, generate or reuse `.gst/encryption.key`, and print the remaining setup steps.
 
 **Flags:**
 - `--godot-version VERSION` (recommended) — explicit Godot version to compile (must match project minor line)
@@ -136,10 +114,9 @@ gst create
 
 ### 3. Export your game
 
-1. Open **Project → Export** again.
-2. Confirm the **Windows Desktop** preset is selected.
-3. Export the project.
-4. Your build uses the custom templates and encryption key you configured.
+Open **Project → Export** again, confirm the **Windows Desktop** preset, then export.
+
+Your build uses the custom templates and encryption key you configured.
 
 ---
 
