@@ -47,7 +47,7 @@ type Logger interface {
 
 // Artifact describes a downloadable/verifiable component.
 type Artifact struct {
-	Name      string // e.g., "mingw", "python"
+	Name      string // e.g., "zig", "python"
 	URL       string
 	SHA256    string
 	ExtractTo string // subdir under runtime/
@@ -59,7 +59,6 @@ type ArchiveKind int
 
 const (
 	ArchiveZip ArchiveKind = iota
-	ArchiveTarXZ
 	ArchiveTarGZ
 	ArchiveRaw
 )

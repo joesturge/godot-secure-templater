@@ -105,11 +105,11 @@ func TestResolveTargetPlatform(t *testing.T) {
 			wantErr:      false,
 		},
 		{
-			name:         "linux tuple is unknown when plugin is not registered",
+			name:         "linux tuple resolves when host-target tuple is registered",
 			input:        "linux/amd64",
 			wantTuple:    "linux/amd64",
-			wantPlatform: "",
-			wantErr:      true,
+			wantPlatform: "linux",
+			wantErr:      false,
 		},
 		{
 			name:         "unknown tuple unsupported",
@@ -269,7 +269,7 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	// GIVEN toolchain component metadata with pinned checksums
 	components := []internal.Artifact{
 		{Name: "python", SHA256: "abc"},
-		{Name: "mingw", SHA256: "def"},
+		{Name: "zig", SHA256: "def"},
 		{Name: "godot_source", SHA256: "placeholder_godot_4.6.3"},
 	}
 
@@ -278,7 +278,7 @@ func TestBuildToolchainChecksums(t *testing.T) {
 
 	// THEN all component checksums should be indexed by component name
 	assert.Equal(t, "abc", checksums["python"], "Python checksum should be preserved in map")
-	assert.Equal(t, "def", checksums["mingw"], "MinGW checksum should be preserved in map")
+	assert.Equal(t, "def", checksums["zig"], "Zig checksum should be preserved in map")
 	assert.Equal(t, "", checksums["godot_source"], "Legacy placeholder checksums should be normalized to empty for cache compatibility")
 	assert.Len(t, checksums, 3, "Checksum map should include all components")
 }

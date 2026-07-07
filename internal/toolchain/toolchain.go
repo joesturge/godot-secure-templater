@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bodgit/sevenzip"
 	"github.com/joemi/godot-secure-templater/internal"
 )
 
@@ -178,9 +177,6 @@ func extractArchive(archivePath, targetDir string, kind internal.ArchiveKind) er
 		return extractZip(archivePath, targetDir)
 	case internal.ArchiveTarGZ:
 		return extractTarGZ(archivePath, targetDir)
-	case internal.ArchiveTarXZ:
-		// 7z format; try to use 7z command if available
-		return extract7z(archivePath, targetDir)
 	case internal.ArchiveRaw:
 		return fmt.Errorf("raw file copy not yet implemented")
 	default:
@@ -354,92 +350,6 @@ func extractTarGZ(gzPath, targetDir string) error {
 			if err := outFile.Close(); err != nil {
 				return err
 			}
-		}
-	}
-
-	return nil
-}
-
-// extract7z extracts a 7z archive using pure Go (github.com/bodgit/sevenzip).
-// Supports MinGW and other LZMA2-compressed archives from niXman.
-func extract7z(archivePath, targetDir string) error {
-	// Open the 7z archive
-	reader, err := sevenzip.OpenReader(archivePath)
-	if err != nil {
-		return fmt.Errorf("failed to open 7z archive: %w", err)
-	}
-	defer func() {
-		_ = reader.Close()
-	}()
-
-	// Track top-level entries to potentially strip one level
-	topLevelDirs := make(map[string]bool)
-	for _, file := range reader.File {
-		parts := strings.Split(strings.TrimRight(file.Name, "/"), "/")
-		if len(parts) > 0 && parts[0] != "" {
-			topLevelDirs[parts[0]] = true
-		}
-	}
-
-	// Decide if we should strip one level
-	stripOneLevel := len(topLevelDirs) == 1
-
-	// Extract files
-	for _, file := range reader.File {
-		// Strip top-level directory if needed
-		name := file.Name
-		if stripOneLevel {
-			parts := strings.Split(strings.TrimRight(name, "/"), "/")
-			if len(parts) > 1 {
-				name = strings.Join(parts[1:], "/")
-			} else if len(parts) == 1 && parts[0] != "" {
-				// Skip the top-level directory itself
-				continue
-			}
-		}
-
-		// Prevent directory traversal
-		fpath := filepath.Join(targetDir, name)
-		if !strings.HasPrefix(fpath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
-			continue
-		}
-
-		if file.FileInfo().IsDir() {
-			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
-				return err
-			}
-			continue
-		}
-
-		// Create parent directories
-		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
-			return err
-		}
-
-		// Extract file
-		rc, err := file.Open()
-		if err != nil {
-			return fmt.Errorf("failed to open file in 7z archive: %w", err)
-		}
-
-		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.FileInfo().Mode())
-		if err != nil {
-			_ = rc.Close()
-			return err
-		}
-
-		if _, err := io.Copy(outFile, rc); err != nil {
-			_ = outFile.Close()
-			_ = rc.Close()
-			return err
-		}
-
-		if err := outFile.Close(); err != nil {
-			_ = rc.Close()
-			return err
-		}
-		if err := rc.Close(); err != nil {
-			return err
 		}
 	}
 

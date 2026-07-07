@@ -1,4 +1,4 @@
-package windows
+package hostwindows
 
 import (
 	"fmt"
@@ -20,11 +20,11 @@ func Components(version string) []internal.Artifact {
 			Kind:      internal.ArchiveZip,
 		},
 		{
-			Name:      "mingw",
-			URL:       "https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev0/x86_64-14.2.0-release-posix-seh-ucrt-rt_v12-rev0.7z",
-			SHA256:    "0f1afc3b48f66dda68fbfb7b8b0f1d22b831396fbe1e3dea776745f32d930b24",
-			ExtractTo: "mingw",
-			Kind:      internal.ArchiveTarXZ,
+			Name:      "zig",
+			URL:       "https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip",
+			SHA256:    "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e",
+			ExtractTo: "zig",
+			Kind:      internal.ArchiveZip,
 		},
 		{
 			Name:      "scons",

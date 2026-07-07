@@ -255,17 +255,16 @@ func TestInitWorkspaceNestedCreation(t *testing.T) {
 	// THEN no error should occur
 	assert.Nil(t, err, "InitWorkspace should not error")
 
-	// AND all nested runtime subdirectories should be created
+	// AND runtime component subdirectories should not be pre-created
 	nestedDirs := []string{
 		filepath.Join(ws.Runtime, "python"),
-		filepath.Join(ws.Runtime, "mingw"),
+		filepath.Join(ws.Runtime, "zig"),
 		filepath.Join(ws.Runtime, "scons"),
 		filepath.Join(ws.Runtime, "godot_source"),
 	}
 
 	for _, dir := range nestedDirs {
-		info, statErr := os.Stat(dir)
-		assert.NoError(t, statErr, "Nested directory should exist: %s", dir)
-		assert.True(t, info.IsDir(), "Path should be a directory: %s", dir)
+		_, statErr := os.Stat(dir)
+		assert.True(t, os.IsNotExist(statErr), "Runtime subdirectory should be created on-demand: %s", dir)
 	}
 }

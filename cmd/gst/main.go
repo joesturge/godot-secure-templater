@@ -14,7 +14,7 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/manifest"
 	"github.com/joemi/godot-secure-templater/internal/pipeline"
 	"github.com/joemi/godot-secure-templater/internal/platform"
-	_ "github.com/joemi/godot-secure-templater/internal/platforms/windows"
+	_ "github.com/joemi/godot-secure-templater/internal/platforms/hostwindows"
 	"github.com/joemi/godot-secure-templater/internal/project"
 	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
@@ -94,10 +94,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if platformErr != nil {
 		return platformErr
 	}
-	platformDef, ok := platform.Lookup(targetPlatform)
-	if !ok {
-		return internal.ErrUnknownPlatform(targetPlatform)
-	}
 	logger.Info("Host tuple: %s", hostTuple)
 	logger.Info("Target tuple: %s", targetTuple)
 
@@ -148,8 +144,12 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 	defer releaseLock()
 
-	if err := platform.ValidateHostSupport(platformDef, hostTuple); err != nil {
-		return err
+	platformDef, ok := platform.LookupHostTarget(hostTuple, targetTuple)
+	if !ok {
+		if platform.IsTargetRegistered(targetTuple) {
+			return internal.ErrHostTargetUnsupported(platform.NormalizeTuple(hostTuple), targetTuple)
+		}
+		return internal.ErrUnknownPlatform(targetPlatform)
 	}
 
 	// ============================================================================
@@ -417,8 +417,12 @@ func resolveTargetPlatform(raw string) (string, string, *internal.Error) {
 	if err != nil {
 		return tuple, "", err
 	}
-	platformID := platform.PlatformIDFromTuple(tuple)
-	if _, ok := platform.Lookup(platformID); !ok {
+	parts := strings.Split(tuple, "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return tuple, "", internal.ErrUnsupportedPlatformTuple(tuple)
+	}
+	platformID := parts[0]
+	if !platform.IsTargetRegistered(tuple) {
 		return tuple, "", internal.ErrUnknownPlatform(platformID)
 	}
 	return tuple, platformID, nil

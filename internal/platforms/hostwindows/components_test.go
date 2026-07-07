@@ -1,4 +1,4 @@
-package windows
+package hostwindows
 
 import (
 	"testing"
@@ -23,7 +23,7 @@ func TestWindowsComponents(t *testing.T) {
 	assert.Equal(t, 4, len(components), "Should return exactly 4 components")
 
 	// AND components should have correct names and URLs
-	expectedNames := []string{"python", "mingw", "scons", "godot_source"}
+	expectedNames := []string{"python", "zig", "scons", "godot_source"}
 	for i, expectedName := range expectedNames {
 		assert.Equal(t, expectedName, components[i].Name, "Component %d should be %s", i, expectedName)
 		assert.NotEmpty(t, components[i].URL, "Component %d should have non-empty URL", i)

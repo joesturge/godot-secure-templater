@@ -107,7 +107,7 @@ func TestErrorMinorMismatchFactory(t *testing.T) {
 
 func TestErrorChecksumMismatchFactory(t *testing.T) {
 	// GIVEN an artifact and mismatched checksums
-	artifact := "mingw"
+	artifact := "zig"
 	expected := "abc123"
 	got := "def456"
 

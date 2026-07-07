@@ -137,10 +137,6 @@ func InitWorkspace(projectPath string) (*internal.Workspace, *internal.Error) {
 	dirs := []string{
 		wsRoot,
 		filepath.Join(wsRoot, "runtime"),
-		filepath.Join(wsRoot, "runtime", "python"),
-		filepath.Join(wsRoot, "runtime", "mingw"),
-		filepath.Join(wsRoot, "runtime", "scons"),
-		filepath.Join(wsRoot, "runtime", "godot_source"),
 		filepath.Join(wsRoot, "templates"),
 		filepath.Join(wsRoot, "logs"),
 	}
