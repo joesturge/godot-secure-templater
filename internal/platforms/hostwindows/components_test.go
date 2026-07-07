@@ -49,7 +49,7 @@ func TestWindowsComponents_GodotURL(t *testing.T) {
 		},
 		{
 			version: "4.7.0",
-			wantURL: "https://github.com/godotengine/godot/archive/refs/tags/4.7.0-stable.tar.gz",
+			wantURL: "https://github.com/godotengine/godot/archive/refs/tags/4.7-stable.tar.gz",
 		},
 	}
 

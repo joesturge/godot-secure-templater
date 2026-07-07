@@ -105,7 +105,11 @@ gst create
 `gst` will compile or reuse the Windows templates, generate or reuse `.gst/encryption.key`, and print the remaining setup steps.
 
 **Flags:**
-- `--godot-version VERSION` (recommended) — explicit Godot version to compile (must match project minor line)
+- `--godot-version VERSION` (recommended) — explicit Godot version to compile. Accepts `X.Y` or `X.Y.Z` and must match the project minor line.
+- If you omit `--godot-version`, `gst` tries a local Godot editor on `PATH` (or `--godot-editor-path`), then the latest stable release for the project minor line from GitHub, then prompts interactively.
+- For CI or automation, always set `--godot-version` to avoid prompts and version drift.
+- `--godot-editor-path PATH` — use this specific Godot editor binary for local version detection.
+- `--platform TUPLE` — target platform tuple for the build. Defaults to the detected host tuple, for example `windows/amd64`.
 - `--verbose` — Show detailed build output
 - `--keep-runtime` — Preserve toolchain after build (useful for repeated builds or debugging)
 - `--force-rebuild` — Skip cache; always recompile templates
@@ -117,6 +121,10 @@ gst create
 Open **Project → Export** again, confirm the **Windows Desktop** preset, then export.
 
 Your build uses the custom templates and encryption key you configured.
+
+### 4. Clean up generated files
+
+Use `gst clean` to remove the generated `.gst/` workspace, including runtime tools, compiled templates, and key material.
 
 ---
 

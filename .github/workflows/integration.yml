@@ -54,6 +54,6 @@ jobs:
 
       - name: Run integration smoke test
         env:
-          GST_GODOT_VERSION: '4.3.2'
+          GST_GODOT_VERSION: '4.7'
         run: |
           bash .github/scripts/integration-smoke.sh "$PWD" "$PWD/dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" "${{ matrix.expected_release }}" "${{ matrix.expected_debug }}" "$PWD/.github/fixtures/integration-project"

@@ -10,21 +10,30 @@ import (
 
 var checksumHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
+// GodotReleaseTagForVersion returns the GitHub release tag for a Godot version.
+// Feature releases use tags like 4.7-stable; maintenance releases use 4.6.3-stable.
+func GodotReleaseTagForVersion(version string) string {
+	version = strings.TrimSpace(version)
+	parts := strings.Split(version, ".")
+	if len(parts) >= 3 && parts[2] == "0" {
+		return fmt.Sprintf("%s.%s-stable", parts[0], parts[1])
+	}
+	return fmt.Sprintf("%s-stable", version)
+}
+
 // GodotChecksumForVersion returns a checksum for a Godot version from GitHub release metadata.
 func GodotChecksumForVersion(version string) string {
 	return fetchGodotChecksumFromGitHub(version)
 }
 
 func fetchGodotChecksumFromGitHub(version string) string {
-	checksumsURL := fmt.Sprintf(
-		"https://github.com/godotengine/godot/releases/download/%s-stable/SHA256-checksums.txt",
-		version,
-	)
+	releaseTag := GodotReleaseTagForVersion(version)
+	checksumsURL := fmt.Sprintf("https://github.com/godotengine/godot/releases/download/%s/SHA256-checksums.txt", releaseTag)
 
-	return fetchGodotChecksumFromURL(checksumsURL, version)
+	return fetchGodotChecksumFromURL(checksumsURL, releaseTag)
 }
 
-func fetchGodotChecksumFromURL(checksumsURL, version string) string {
+func fetchGodotChecksumFromURL(checksumsURL, releaseTag string) string {
 	resp, err := checksumHTTPClient.Get(checksumsURL)
 	if err != nil {
 		return ""
@@ -37,7 +46,7 @@ func fetchGodotChecksumFromURL(checksumsURL, version string) string {
 		return ""
 	}
 
-	targetName := fmt.Sprintf("godot-%s-stable.tar.gz", version)
+	targetName := fmt.Sprintf("godot-%s.tar.gz", releaseTag)
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

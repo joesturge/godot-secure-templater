@@ -35,7 +35,7 @@ func Components(version string) []internal.Artifact {
 		},
 		{
 			Name:      "godot_source",
-			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s-stable.tar.gz", version),
+			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s.tar.gz", toolchain.GodotReleaseTagForVersion(version)),
 			SHA256:    resolveGodotChecksum(version),
 			ExtractTo: "godot_source",
 			Kind:      internal.ArchiveTarGZ,
