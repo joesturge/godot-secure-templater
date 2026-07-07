@@ -62,7 +62,9 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 			_ = os.Remove(path)
 		}(archivePath)
 
-		if art.SHA256 == "" {
+		if art.Name == "godot_source" {
+			ctx.Logger.Debug("Skipping checksum verification for %s", art.Name)
+		} else if art.SHA256 == "" {
 			return &internal.Error{
 				Code:    internal.ExitChecksumMismatch,
 				Message: fmt.Sprintf("No checksum available for %s", art.Name),

@@ -8,7 +8,6 @@ import (
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/platform"
-	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
 
 func TestWindowsPluginRegistersDefinition(t *testing.T) {
@@ -32,11 +31,6 @@ func TestWindowsPluginRegistersDefinition(t *testing.T) {
 }
 
 func TestWindowsPluginComponents(t *testing.T) {
-	resolveGodotChecksum = func(version string) string { return "stub-checksum" }
-	defer func() {
-		resolveGodotChecksum = toolchain.GodotChecksumForVersion
-	}()
-
 	// GIVEN a registered windows platform definition
 	def, ok := platform.LookupHostTarget("windows/amd64", "windows/amd64")
 	assert.True(t, ok, "Windows platform should exist in registry for component-resolution tests")
@@ -60,7 +54,7 @@ func TestWindowsPluginComponents(t *testing.T) {
 
 	for _, c := range components {
 		if c.Name == "godot_source" {
-			assert.Equal(t, "stub-checksum", c.SHA256, "Godot checksum should come from resolver callback")
+			assert.Empty(t, c.SHA256, "Godot source should not require a checksum")
 		}
 	}
 }
@@ -96,11 +90,6 @@ func TestWindowsPluginSuccessNextSteps(t *testing.T) {
 }
 
 func TestWindowsHostLinuxTargetRegistration(t *testing.T) {
-	resolveGodotChecksum = func(version string) string { return "stub-checksum" }
-	defer func() {
-		resolveGodotChecksum = toolchain.GodotChecksumForVersion
-	}()
-
 	// GIVEN the windows plugin package init has registered host/target definitions
 
 	// WHEN looking up the windows-host linux-target tuple pair

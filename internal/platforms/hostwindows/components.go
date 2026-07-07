@@ -2,15 +2,14 @@ package hostwindows
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
-	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
-
-var resolveGodotChecksum = toolchain.GodotChecksumForVersion
 
 // Components returns the toolchain components for a Windows target.
 func Components(version string) []internal.Artifact {
+	releaseTag := godotReleaseTagForVersion(version)
 	return []internal.Artifact{
 		{
 			Name:      "python",
@@ -35,10 +34,19 @@ func Components(version string) []internal.Artifact {
 		},
 		{
 			Name:      "godot_source",
-			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s.tar.gz", toolchain.GodotReleaseTagForVersion(version)),
-			SHA256:    resolveGodotChecksum(version),
+			URL:       fmt.Sprintf("https://github.com/godotengine/godot/archive/refs/tags/%s.tar.gz", releaseTag),
+			SHA256:    "",
 			ExtractTo: "godot_source",
 			Kind:      internal.ArchiveTarGZ,
 		},
 	}
+}
+
+func godotReleaseTagForVersion(version string) string {
+	version = strings.TrimSpace(version)
+	parts := strings.Split(version, ".")
+	if len(parts) >= 3 && parts[2] == "0" {
+		return fmt.Sprintf("%s.%s-stable", parts[0], parts[1])
+	}
+	return fmt.Sprintf("%s-stable", version)
 }

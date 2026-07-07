@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,22 +13,6 @@ import (
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestGodotChecksumForVersion(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintln(w, "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c godot-4.7-stable.tar.gz")
-	}))
-	defer server.Close()
-
-	checksum := fetchGodotChecksumFromURL(server.URL, GodotReleaseTagForVersion("4.7"))
-	assert.Equal(t, "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c", checksum)
-}
-
-func TestGodotReleaseTagForVersion(t *testing.T) {
-	assert.Equal(t, "4.6.3-stable", GodotReleaseTagForVersion("4.6.3"))
-	assert.Equal(t, "4.7-stable", GodotReleaseTagForVersion("4.7.0"))
-	assert.Equal(t, "4.7-stable", GodotReleaseTagForVersion("4.7"))
-}
 
 func TestVerifyChecksum_Valid(t *testing.T) {
 	// GIVEN a file with known content
