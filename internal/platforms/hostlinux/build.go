@@ -30,7 +30,12 @@ func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SCo
 	if err := ensureHostDependencies(); err != nil {
 		return err
 	}
-	return sconsworkflow.VerifyCompileReadiness(ctx, hostTuple, profile)
+
+	return sconsworkflow.VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, map[string]string{
+		"CC":  "zig cc",
+		"CXX": "zig c++",
+		"AR":  "zig ar",
+	})
 }
 
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {

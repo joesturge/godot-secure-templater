@@ -88,6 +88,11 @@ func BuildCommand(pythonExe string, sconsExe string, sconsArgs []string, logger 
 
 // VerifyCompileReadiness validates that runtime tools are discoverable and that a no-build SCons invocation succeeds.
 func VerifyCompileReadiness(ctx *internal.RunContext, hostTuple string, profile targetprofiles.SConsTargetProfile) *internal.Error {
+	return VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, nil)
+}
+
+// VerifyCompileReadinessWithEnv validates readiness using optional env overrides.
+func VerifyCompileReadinessWithEnv(ctx *internal.RunContext, hostTuple string, profile targetprofiles.SConsTargetProfile, extraEnv map[string]string) *internal.Error {
 	tools, err := ResolveRuntimeTools(ctx.Workspace, ctx.Logger)
 	if err != nil {
 		return err
@@ -95,7 +100,11 @@ func VerifyCompileReadiness(ctx *internal.RunContext, hostTuple string, profile 
 
 	hostAdapter := AdapterForHostTuple(hostTuple)
 	hostAdapter.NormalizeRuntimeTools(tools)
-	env := mergedEnv(hostAdapter.BuildEnv(ctx.Workspace, "verify-only"))
+	envOverrides := hostAdapter.BuildEnv(ctx.Workspace, "verify-only")
+	for k, v := range extraEnv {
+		envOverrides[k] = v
+	}
+	env := mergedEnv(envOverrides)
 	zigExe, zigErr := resolveZigExecutable(ctx.Workspace.Runtime)
 	if zigErr != nil {
 		return &internal.Error{

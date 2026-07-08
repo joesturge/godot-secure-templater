@@ -84,7 +84,7 @@ Invoke-WebRequest -Uri $url -OutFile gst.exe
 Clone the repository, then use the host-appropriate build command in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Requires
-- Go 1.21+
+- Go 1.25.0+
 - Windows 10/11 host for Windows templates, or Linux/POSIX host for Linux templates
   - Python 3.11 runtime provisioned automatically
   - Zig 0.16.0 provisioned automatically

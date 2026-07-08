@@ -67,13 +67,15 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 			_ = os.Remove(path)
 		}(archivePath)
 
-		if art.Name == "godot_source" {
-			ctx.Logger.Debug("Skipping checksum verification for %s", art.Name)
-		} else if art.SHA256 == "" {
-			return &internal.Error{
-				Code:    internal.ExitChecksumMismatch,
-				Message: fmt.Sprintf("No checksum available for %s", art.Name),
-				Details: "Failed to resolve checksum metadata for this artifact. Aborting to avoid unverified downloads.",
+		if art.SHA256 == "" {
+			if art.Name == "godot_source" {
+				ctx.Logger.Debug("Skipping checksum verification for %s (checksum not provided)", art.Name)
+			} else {
+				return &internal.Error{
+					Code:    internal.ExitChecksumMismatch,
+					Message: fmt.Sprintf("No checksum available for %s", art.Name),
+					Details: "Failed to resolve checksum metadata for this artifact. Aborting to avoid unverified downloads.",
+				}
 			}
 		} else {
 			ctx.Logger.Debug("Verifying checksum for %s", art.Name)
@@ -397,8 +399,9 @@ func extractTarXZ(xzPath, targetDir string) error {
 			return err
 		}
 
-		fpath := filepath.Join(targetDir, header.Name)
-		if !strings.HasPrefix(fpath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
+		cleanTargetDir := filepath.Clean(targetDir)
+		fpath := filepath.Clean(filepath.Join(cleanTargetDir, header.Name))
+		if !strings.HasPrefix(fpath, cleanTargetDir+string(os.PathSeparator)) {
 			continue
 		}
 
@@ -424,6 +427,9 @@ func extractTarXZ(xzPath, targetDir string) error {
 			if err := outFile.Close(); err != nil {
 				return err
 			}
+		case tar.TypeSymlink, tar.TypeLink:
+			// Ignore links to avoid redirecting writes outside targetDir.
+			continue
 		}
 	}
 
