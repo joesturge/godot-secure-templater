@@ -82,23 +82,29 @@ func (r *Resolver) Resolve() (*Resolution, error) {
 }
 
 // NormalizeVersion takes a Godot version string (possibly with build metadata like "4.3.1.stable.official")
-// and returns the semantic version (e.g., "4.3.1").
+// and returns the semantic version (e.g., "4.3.1"). Patchless feature releases such as "4.7" normalize
+// to "4.7.0" so the rest of the tool can treat them as semver.
 // Returns error if the version doesn't match expected patterns.
 func NormalizeVersion(input string) (string, error) {
 	if input == "" {
 		return "", fmt.Errorf("version string is empty")
 	}
 
-	// Match semantic version at the start: X.Y.Z
+	// Match semantic version at the start: X.Y or X.Y.Z
 	// Build metadata (e.g., ".stable.official") is stripped.
-	pattern := regexp.MustCompile(`^(\d+\.\d+\.\d+)`)
+	pattern := regexp.MustCompile(`^(\d+\.\d+(?:\.\d+)?)`)
 	matches := pattern.FindStringSubmatch(input)
 
 	if len(matches) < 2 {
-		return "", fmt.Errorf("invalid version format: %s (expected X.Y.Z or X.Y.Z.metadata)", input)
+		return "", fmt.Errorf("invalid version format: %s (expected X.Y or X.Y.Z, optionally with metadata)", input)
 	}
 
-	return matches[1], nil
+	version := matches[1]
+	if strings.Count(version, ".") == 1 {
+		version += ".0"
+	}
+
+	return version, nil
 }
 
 // ExtractMinor extracts the major.minor from a version (e.g., "4.3.0" → "4.3").
@@ -257,7 +263,7 @@ type InteractiveStrategy struct {
 
 func (s *InteractiveStrategy) Resolve() (*Resolution, error) {
 	if s.PromptFunc != nil {
-		input, err := s.PromptFunc("Enter Godot version (X.Y.Z): ")
+		input, err := s.PromptFunc("Enter Godot version (X.Y or X.Y.Z): ")
 		if err != nil {
 			return nil, fmt.Errorf("interactive prompt failed: %w", err)
 		}
@@ -276,7 +282,7 @@ func (s *InteractiveStrategy) Resolve() (*Resolution, error) {
 		return nil, nil
 	}
 
-	if _, err := fmt.Fprint(os.Stdout, "Enter Godot version (X.Y.Z): "); err != nil {
+	if _, err := fmt.Fprint(os.Stdout, "Enter Godot version (X.Y or X.Y.Z): "); err != nil {
 		return nil, fmt.Errorf("interactive prompt write failed: %w", err)
 	}
 	reader := bufio.NewReader(os.Stdin)
@@ -350,7 +356,7 @@ func (s *GitHubAPIStrategy) writeCache(version string) {
 }
 
 func normalizeFromToolOutput(output string) (string, error) {
-	re := regexp.MustCompile(`(\d+\.\d+\.\d+(?:\.[A-Za-z0-9._-]+)?)`)
+	re := regexp.MustCompile(`(\d+\.\d+(?:\.\d+)?(?:\.[A-Za-z0-9._-]+)?)`)
 	match := re.FindString(strings.TrimSpace(output))
 	if match == "" {
 		return "", fmt.Errorf("could not parse Godot version from output: %q", strings.TrimSpace(output))

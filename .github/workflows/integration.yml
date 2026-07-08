@@ -1,0 +1,75 @@
+name: Integration Smoke
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Integration mode to execute
+        required: true
+        default: verify
+        type: choice
+        options:
+          - verify
+          - compile
+      godot_version:
+        description: Godot version passed to gst create
+        required: true
+        default: '4.7'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gst-smoke:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows host -> windows target
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            target_tuple: windows/amd64
+            binary_ext: .exe
+            expected_release: windows_template_release.exe
+            expected_debug: windows_template_debug.exe
+          - name: linux host -> linux target
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            target_tuple: linux/amd64
+            binary_ext: ""
+            expected_release: linux_template_release.x86_64
+            expected_debug: linux_template_debug.x86_64
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Build CLI
+        run: |
+          mkdir -p dist
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o "dist/gst${{ matrix.binary_ext }}" ./cmd/gst
+
+      - name: Run integration smoke test
+        env:
+          GST_GODOT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}
+          GST_INTEGRATION_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'verify' }}
+        run: |
+          bash .github/scripts/integration-smoke.sh "$PWD" "$PWD/dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" "$GST_INTEGRATION_MODE" "${{ matrix.expected_release }}" "${{ matrix.expected_debug }}" "$PWD/.github/fixtures/integration-project"

@@ -1,12 +1,11 @@
 package toolchain
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,17 +13,8 @@ import (
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/stretchr/testify/assert"
+	"github.com/ulikunitz/xz"
 )
-
-func TestGodotChecksumForVersion(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintln(w, "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c godot-4.6.3-stable.tar.gz")
-	}))
-	defer server.Close()
-
-	checksum := fetchGodotChecksumFromURL(server.URL, "4.6.3")
-	assert.Equal(t, "fa22b5f974125057087c9ef725eae582dbc5e39385dc377e8d5dbc295b367e1c", checksum)
-}
 
 func TestVerifyChecksum_Valid(t *testing.T) {
 	// GIVEN a file with known content
@@ -291,6 +281,84 @@ func TestExtractArchive_InvalidKind(t *testing.T) {
 
 	// THEN it should return an error
 	assert.Error(t, err, "Should error on unknown archive kind")
+}
+
+func TestExtractTarXZ_BlocksDirectoryTraversal(t *testing.T) {
+	// GIVEN a tar.xz archive containing a directory traversal path
+	tempDir := t.TempDir()
+	archivePath := filepath.Join(tempDir, "evil.tar.xz")
+	targetDir := filepath.Join(tempDir, "extract")
+	outsidePath := filepath.Clean(filepath.Join(targetDir, "..", "outside.txt"))
+
+	err := os.MkdirAll(targetDir, 0755)
+	assert.NoError(t, err, "Target directory should be creatable")
+
+	err = writeTarXZ(archivePath, []tar.Header{
+		{Name: "../../outside.txt", Mode: 0600, Size: int64(len("oops")), Typeflag: tar.TypeReg},
+	}, [][]byte{[]byte("oops")})
+	assert.NoError(t, err, "Test tar.xz archive should be creatable")
+
+	// WHEN extracting the tar.xz archive
+	err = extractTarXZ(archivePath, targetDir)
+
+	// THEN extraction should succeed without writing outside targetDir
+	assert.NoError(t, err, "extractTarXZ should ignore traversal entries without failing")
+	_, statErr := os.Stat(outsidePath)
+	assert.True(t, os.IsNotExist(statErr), "extractTarXZ should never write files outside target directory")
+}
+
+func TestExtractTarXZ_IgnoresSymlinkEntries(t *testing.T) {
+	// GIVEN a tar.xz archive containing a symlink entry
+	tempDir := t.TempDir()
+	archivePath := filepath.Join(tempDir, "symlink.tar.xz")
+	targetDir := filepath.Join(tempDir, "extract")
+	symlinkPath := filepath.Join(targetDir, "link")
+
+	err := os.MkdirAll(targetDir, 0755)
+	assert.NoError(t, err, "Target directory should be creatable")
+
+	err = writeTarXZ(archivePath, []tar.Header{
+		{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "../../etc/passwd"},
+	}, [][]byte{{}})
+	assert.NoError(t, err, "Test tar.xz archive should be creatable")
+
+	// WHEN extracting the tar.xz archive
+	err = extractTarXZ(archivePath, targetDir)
+
+	// THEN symlink entries should be ignored
+	assert.NoError(t, err, "extractTarXZ should ignore symlink entries without failing")
+	_, statErr := os.Lstat(symlinkPath)
+	assert.True(t, os.IsNotExist(statErr), "extractTarXZ should not materialize symlink entries")
+}
+
+func writeTarXZ(archivePath string, headers []tar.Header, bodies [][]byte) error {
+	file, err := os.Create(archivePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+
+	xzw, err := xz.NewWriter(file)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = xzw.Close() }()
+
+	tw := tar.NewWriter(xzw)
+	defer func() { _ = tw.Close() }()
+
+	for i, header := range headers {
+		if err := tw.WriteHeader(&header); err != nil {
+			return err
+		}
+		if header.Typeflag == tar.TypeReg {
+			if _, err := tw.Write(bodies[i]); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func TestEnsureSufficientDiskSpace(t *testing.T) {

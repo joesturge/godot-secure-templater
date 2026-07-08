@@ -66,7 +66,7 @@ These hold across every slice and are the reason the plan can start tiny yet gro
 | --- | --- | --- | --- |
 | **0** | Walking skeleton (MVP) | One hard-coded happy path: Windows→Windows, Godot 4.3+, explicit version, compile + wire-in, safe config/key handling | Version inference, manifest/caching, CI mode, runtime pruning, long-path prefixing, multi-era config, plugin framework |
 | **1** | Robust single-platform tool | Version resolution chain, manifest + idempotency, staged progress, cleanup, multi-era config, long-path handling, key-regen guardrails | CI/non-interactive, multi-platform |
-| **2** | Multi-platform extensibility | Extract plugin registry + `Provisioner`/`EnvironmentBuilder` interfaces + host/target matrix, driven by a real 2nd target (Linux) | Web/Android/macOS/iOS specifics |
+| **2** | Multi-platform extensibility | Extract plugin registry + `Provisioner`/`EnvironmentBuilder` interfaces + host/target matrix, driven by a real 2nd target (Linux on a POSIX host) | Web/Android/macOS/iOS specifics |
 | **3** | CI / automation | `--non-interactive`/`--yes`, `--json`, manifest-keyed caching, secret-safe logging, parallel release+debug compilation | — |
 | **4+** | Breadth & hardening | Concrete Web/Android/macOS/iOS plugins, signature verification, documented CI workflow, `list-platforms` | — |
 
@@ -76,7 +76,8 @@ These hold across every slice and are the reason the plan can start tiny yet gro
 
 **Goal:** a single hard-coded happy path, end to end, on a developer's Windows machine → Windows
 Desktop target, Godot **≥ 4.3** only. Prove the core loop (§1) and establish the safety and
-extensibility structure the rest of the plan builds on.
+extensibility structure the rest of the plan builds on. Follow upstream Godot host/toolchain
+constraints rather than promising unsupported cross-build combinations.
 
 ### 4.1 Scope constraints
 
@@ -85,6 +86,8 @@ extensibility structure the rest of the plan builds on.
   modified.
 * **Role:** configuration + compilation prep. The tool builds custom binaries and injects
   paths/keys; the Godot Editor (or, later, a CI step) performs the final `.pck` packaging/export.
+* **Constraint:** future targets should stay on upstream-supported host paths unless the project
+  explicitly chooses to own a custom cross-compilation stack.
 
 ### 4.2 Directory layout
 
@@ -131,10 +134,11 @@ MyGame/
   rather than dying at 90%.
 * Download portable Python, MinGW-w64, SCons, and the Godot source tarball for the requested version
   into `runtime/`. No system state touched.
-* **Integrity verification (non-negotiable, in the MVP):** every artifact is checked against a
-  SHA-256 checksum **pinned in the CLI's own release**, not fetched at runtime from the same channel
-  as the artifact. A mismatch aborts with a clear error. This tool handles key material downstream,
-  so supply-chain integrity is a hard requirement.
+* **Integrity verification (non-negotiable, in the MVP):** toolchain artifacts with stable published
+  hashes are checked against SHA-256 checksums **pinned in the CLI's own release**, not fetched at
+  runtime from the same channel as the artifact. A mismatch aborts with a clear error. This tool
+  handles key material downstream, so supply-chain integrity is a hard requirement. The current
+  Godot source tarball is the exception in this flow and is downloaded without checksum verification.
 * **Key generation:** if `encryption.key` is absent, generate a 256-bit AES key with `crypto/rand`
   and write it **with owner-only file permissions**; document that `.gitignore` is not a secrecy
   mechanism. If present, **reuse** it (reuse is always safe; regeneration is the dangerous op and is

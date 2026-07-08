@@ -10,13 +10,13 @@ import (
 
 // Definition describes one target platform implementation.
 type Definition struct {
-	ID                  string
-	TargetTuple         string
-	SupportedHostTuples map[string]struct{}
-	Components          func(version string) ([]internal.Artifact, *internal.Error)
-	Compile             func(ctx *internal.RunContext, key string) *internal.Error
-	ArtifactPaths       func(workspace *internal.Workspace) (releasePath string, debugPath string)
-	SuccessNextSteps    func() []string
+	HostTuple        string
+	TargetTuple      string
+	Components       func(version string) ([]internal.Artifact, *internal.Error)
+	Compile          func(ctx *internal.RunContext, key string) *internal.Error
+	Verify           func(ctx *internal.RunContext) *internal.Error
+	ArtifactPaths    func(workspace *internal.Workspace) (releasePath string, debugPath string)
+	SuccessNextSteps func() []string
 }
 
 var (
@@ -27,17 +27,20 @@ var (
 	runtimeGOARCH = runtime.GOARCH
 )
 
+func hostTargetKey(hostTuple, targetTuple string) string {
+	return NormalizeTuple(hostTuple) + "->" + NormalizeTuple(targetTuple)
+}
+
 // Register adds a platform definition to the registry.
 func Register(def Definition) {
-	id := strings.ToLower(strings.TrimSpace(def.ID))
-	if id == "" {
-		panic("platform.Register: empty platform id")
-	}
 	if def.Components == nil {
 		panic("platform.Register: components resolver is nil")
 	}
 	if def.Compile == nil {
 		panic("platform.Register: compiler callback is nil")
+	}
+	if def.Verify == nil {
+		panic("platform.Register: verify callback is nil")
 	}
 	if def.ArtifactPaths == nil {
 		panic("platform.Register: artifact-path callback is nil")
@@ -49,35 +52,44 @@ func Register(def Definition) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 
-	if _, exists := registry[id]; exists {
-		panic("platform.Register: duplicate platform id: " + id)
+	def.HostTuple = NormalizeTuple(def.HostTuple)
+	if def.HostTuple == "" {
+		panic("platform.Register: empty host tuple")
 	}
-
-	def.ID = id
 	def.TargetTuple = NormalizeTuple(def.TargetTuple)
 	if def.TargetTuple == "" {
-		def.TargetTuple = id + "/amd64"
-	}
-	if def.SupportedHostTuples == nil {
-		def.SupportedHostTuples = map[string]struct{}{}
+		panic("platform.Register: empty target tuple")
 	}
 
-	normalizedHosts := map[string]struct{}{}
-	for tuple := range def.SupportedHostTuples {
-		normalizedHosts[NormalizeTuple(tuple)] = struct{}{}
+	pairKey := hostTargetKey(def.HostTuple, def.TargetTuple)
+	if _, exists := registry[pairKey]; exists {
+		panic("platform.Register: duplicate host/target tuple pair: " + pairKey)
 	}
-	def.SupportedHostTuples = normalizedHosts
 
-	registry[id] = def
+	registry[pairKey] = def
 }
 
-// Lookup retrieves a platform definition by id.
-func Lookup(id string) (Definition, bool) {
+// LookupHostTarget retrieves a platform definition by exact host/target tuple pair.
+func LookupHostTarget(hostTuple, targetTuple string) (Definition, bool) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 
-	def, ok := registry[strings.ToLower(strings.TrimSpace(id))]
+	def, ok := registry[hostTargetKey(hostTuple, targetTuple)]
 	return def, ok
+}
+
+// IsTargetRegistered reports whether any host supports the target tuple.
+func IsTargetRegistered(targetTuple string) bool {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	normalizedTarget := NormalizeTuple(targetTuple)
+	for _, def := range registry {
+		if def.TargetTuple == normalizedTarget {
+			return true
+		}
+	}
+	return false
 }
 
 // DetectHostTuple returns the executing host tuple (goos/goarch).
@@ -100,16 +112,6 @@ func NormalizeTuple(input string) string {
 	return tuple
 }
 
-// PlatformIDFromTuple extracts the platform id prefix from a tuple.
-func PlatformIDFromTuple(tuple string) string {
-	normalized := NormalizeTuple(tuple)
-	parts := strings.Split(normalized, "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[0]
-}
-
 // ResolveTargetTuple resolves an input tuple, defaulting to host tuple when blank.
 func ResolveTargetTuple(raw string, hostTuple string) (string, *internal.Error) {
 	tuple := NormalizeTuple(raw)
@@ -128,10 +130,7 @@ func ValidateHostSupport(def Definition, hostTuple string) *internal.Error {
 	if normalizedHost == "" {
 		return internal.ErrHostTargetUnsupported("unknown", def.TargetTuple)
 	}
-	if len(def.SupportedHostTuples) == 0 {
-		return nil
-	}
-	if _, ok := def.SupportedHostTuples[normalizedHost]; ok {
+	if NormalizeTuple(def.HostTuple) == normalizedHost {
 		return nil
 	}
 	return internal.ErrHostTargetUnsupported(normalizedHost, def.TargetTuple)

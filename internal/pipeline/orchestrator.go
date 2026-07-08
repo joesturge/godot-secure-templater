@@ -34,6 +34,9 @@ type Options struct {
 	// ForceRebuild skips idempotency check (ignores cache)
 	ForceRebuild bool
 
+	// VerifyOnly checks compile readiness without generating templates.
+	VerifyOnly bool
+
 	// RegenerateKey requests new encryption key (requires confirmation)
 	RegenerateKey bool
 

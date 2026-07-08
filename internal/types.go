@@ -24,6 +24,7 @@ type Flags struct {
 	GodotVersion string // --godot-version
 	Platform     string // hard-wired "windows" in Slice 0
 	KeepRuntime  bool   // --keep-runtime
+	VerifyOnly   bool   // --verify-only
 	Interactive  bool   // negated by absence of stdin (Slice 2)
 }
 
@@ -47,7 +48,7 @@ type Logger interface {
 
 // Artifact describes a downloadable/verifiable component.
 type Artifact struct {
-	Name      string // e.g., "mingw", "python"
+	Name      string // e.g., "zig", "python"
 	URL       string
 	SHA256    string
 	ExtractTo string // subdir under runtime/
@@ -59,8 +60,8 @@ type ArchiveKind int
 
 const (
 	ArchiveZip ArchiveKind = iota
-	ArchiveTarXZ
 	ArchiveTarGZ
+	ArchiveTarXZ
 	ArchiveRaw
 )
 

@@ -1,22 +1,11 @@
 # Contributing to Godot Secure Templater
 
-Thank you for contributing. This guide explains the current workflow, expectations, and quality bar for this repository.
-
-## TDD-First Is Mandatory
-
-For behavioural changes, use red -> green -> refactor every time.
-
-1. Red: write or update a test that fails for the intended behaviour.
-2. Green: make the smallest production change needed to pass.
-3. Refactor: clean up only after tests are green.
-
-Do not bundle unrelated refactors into the red -> green step.
-If a change is difficult to test directly, add the nearest executable check rather than skipping test-first development.
+This guide covers the current workflow, expectations, and quality bar for this repository.
 
 ## Current Scope
 
-- Current supported build target: Windows templates.
-- Linux target is not currently implemented.
+- Supported build targets: Windows templates on Windows hosts, and Linux templates on Linux/POSIX hosts.
+- Web is not yet implemented here. Planned additions stay within upstream Godot host/toolchain constraints.
 - `gst create` compiles templates and prints manual setup guidance for Godot export configuration.
 
 ## Development Setup
@@ -34,6 +23,8 @@ go build -o dist/gst ./cmd/gst
 ./dist/gst --help
 ```
 
+Use the release-build commands below when you need explicit GOOS/GOARCH output names.
+
 ## Typical Change Workflow
 
 1. Start with a failing test for behaviour changes.
@@ -45,11 +36,46 @@ Recommended commands:
 
 ```bash
 # focused packages (example)
-go test ./cmd/gst ./internal/platform ./internal/platforms/windows
+go test ./cmd/gst ./internal/platforms/hostwindows ./internal/platforms/hostlinux ./internal/toolchain
 
 # full suite
 go test ./...
 ```
+
+## Integration Smoke Tests (Local)
+
+The integration workflow uses `.github/scripts/integration-smoke.sh`. You can run the same script locally in either mode.
+
+Linux host example:
+
+```bash
+mkdir -p dist
+go build -o dist/gst ./cmd/gst
+
+# Fast readiness check (no template compile)
+bash .github/scripts/integration-smoke.sh \
+	"$PWD" \
+	"$PWD/dist/gst" \
+	"4.7" \
+	"linux/amd64" \
+	"verify" \
+	"linux_template_release.x86_64" \
+	"linux_template_debug.x86_64" \
+	"$PWD/.github/fixtures/integration-project"
+
+# Full compile smoke check
+bash .github/scripts/integration-smoke.sh \
+	"$PWD" \
+	"$PWD/dist/gst" \
+	"4.7" \
+	"linux/amd64" \
+	"compile" \
+	"linux_template_release.x86_64" \
+	"linux_template_debug.x86_64" \
+	"$PWD/.github/fixtures/integration-project"
+```
+
+Use `windows/amd64` and `windows_template_*.exe` for Windows-host smoke runs.
 
 ## Testing Conventions
 
@@ -97,7 +123,7 @@ Before requesting review:
 
 ## Release Build Commands
 
-Use these when generating binaries manually:
+Use these when generating binaries manually. The README points here for the canonical source-build commands.
 
 ```bash
 mkdir -p dist

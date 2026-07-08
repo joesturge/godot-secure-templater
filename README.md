@@ -1,10 +1,10 @@
 # Godot Secure Templater (gst)
 
-**Secure encrypted Godot export templates, without the toolchain hassle.**
+**Secure encrypted Godot export templates without the toolchain hassle.**
 
 <img width="735" height="342" alt="image" src="https://github.com/user-attachments/assets/3f19bdc2-1719-4cc4-a3bc-ada1d6d9cde2" />
 
-`gst` automates provisioning and compilation of encrypted Godot export templates—all in an isolated workspace within your project. No manual C++ toolchain setup. No Python dependency hell. No SCons config. Just one command.
+`gst` provisions and compiles encrypted Godot export templates in an isolated workspace within your project. No manual C++ toolchain setup, Python dependency hell, or SCons config. Just one command.
 
 ```bash
 $ gst create
@@ -19,15 +19,15 @@ $ gst create
 - **Result:** Your game scripts and resources are encrypted in the final binary
 
 ### 🛠️ Automated Toolchain
-- Downloads and verifies Python, MinGW, SCons, and Godot source automatically
-- Runs everything in `.gst/` (isolated workspace)
-- Cleans up after build (optional `--keep-runtime` for debugging)
+- Downloads Python, MinGW, SCons, and Godot source into an isolated workspace
+- Runs in `.gst/` (isolated workspace)
+- Cleans up after build; use `--keep-runtime` for debugging
 - **Result:** No manual compiler installation ever
 
 ### 🚀 One Command to Build and Set Up
 Run `gst create` whenever you need to compile templates and print the setup steps for Godot.
 
-Use one shared project key distributed securely (for example via your secret manager or CI).
+Use one shared project key, distributed securely via your secret manager or CI.
 
 ```
 📋 Note for teammates:
@@ -38,12 +38,19 @@ Use one shared project key distributed securely (for example via your secret man
 
 ### 🔄 Smart Rebuilds
 - Caches build fingerprint (version, checksums, platform)
-- Skips rebuild if inputs haven't changed
+- Skips rebuild when inputs haven't changed
 - Force rebuild with `--force-rebuild` if needed
 
 ### 📍 Platform-Ready
-- **Now:** Windows Desktop (4.3+, real SCons compilation with AES-256 encryption)
-- **Next:** Linux target is planned but not implemented yet
+| Host                    | Target                                | Status                   | Notes                                                                                                                               |
+| ----------------------- | ------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Windows                 | Windows                               | Supported here           | Current end-to-end path.                                                                                                            |
+| Linux / POSIX           | Linux                                 | Supported here           | Uses Godot's standard `linuxbsd` SCons flow on POSIX hosts.                                                                         |
+| Windows / Linux / macOS | Android export templates              | Planned here             | Godot documents Android compilation on all three hosts with the Android SDK/NDK, but this repo does not implement it yet.           |
+| Windows / Linux / macOS | Web export templates                  | Planned here             | Requires the Emscripten SDK; not implemented here yet.                                                                              |
+| Windows / Linux / macOS | Web local serving / browser test loop | Planned here             | Godot's Web flow also expects a local web server for testing the generated output.                                                  |
+| Linux / macOS           | Windows Desktop                       | Upstream-capable example | Godot documents Windows cross-compilation from Linux/macOS via MinGW or MinGW-LLVM, but this repo does not implement that path yet. |
+| Windows                 | Linux                                 | Not planned (yet)        | Godot's standard `linuxbsd` path is not a normal Windows-hosted build flow.                                                         |
 
 ---
 
@@ -52,24 +59,16 @@ Use one shared project key distributed securely (for example via your secret man
 ### From GitHub Releases (recommended)
 
 1. Open the [latest release on GitHub](https://github.com/joesturge/godot-secure-templater/releases).
-2. Download the asset for your OS/architecture.
-3. Rename or move it to a location on your PATH.
+2. Download the asset for your OS and CPU.
+3. Move it onto your PATH.
 
-Release asset names:
-- `gst-windows-amd64.exe`
-- `gst-windows-arm64.exe`
-- `gst-linux-amd64`
-- `gst-linux-arm64`
-- `gst-darwin-amd64`
-- `gst-darwin-arm64`
-
-Which one should I download?
-- Most modern Windows PCs (Intel/AMD 64-bit): `gst-windows-amd64.exe`
-- Windows on ARM devices: `gst-windows-arm64.exe`
-- Most modern Linux PCs (Intel/AMD 64-bit): `gst-linux-amd64`
-- Linux on ARM64 devices: `gst-linux-arm64`
-- macOS on Apple Silicon (M1/M2/M3): `gst-darwin-arm64`
-- macOS on older Intel Macs: `gst-darwin-amd64`
+Common downloads:
+- Windows 64-bit: `gst-windows-amd64.exe`
+- Windows ARM64: `gst-windows-arm64.exe`
+- Linux 64-bit: `gst-linux-amd64`
+- Linux ARM64: `gst-linux-arm64`
+- macOS Intel: `gst-darwin-amd64`
+- macOS Apple Silicon: `gst-darwin-arm64`
 
 Windows (PowerShell):
 
@@ -82,64 +81,64 @@ Invoke-WebRequest -Uri $url -OutFile gst.exe
 
 ### From Source
 
-```bash
-git clone https://github.com/joesturge/godot-secure-templater.git
-cd godot-secure-templater
-mkdir -p dist
-go build -o dist/gst ./cmd/gst
-sudo mv dist/gst /usr/local/bin/  # or add to PATH
-```
-
-For contributor and release build commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Clone the repository, then use the host-appropriate build command in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Requires
-- Go 1.21+
-- Windows 10/11 host (for Windows templates)
-  - MinGW 14.2.0 downloaded and provisioned automatically
-  - Python 3.11 embedded distribution (no system Python needed)
+- Go 1.25.0+
+- Windows 10/11 host for Windows templates, or Linux/POSIX host for Linux templates
+  - Python 3.11 runtime provisioned automatically
+  - Zig 0.16.0 provisioned automatically
   - SCons 4.4.0 provisioned automatically
+  - Linux prerequisite: `pkg-config` must be installed on the host for `linux/amd64` builds
 - Internet connection (first run downloads ~1GB of toolchain)
 - 5+ GB disk space (toolchain + source + build artefacts)
+
+Linux host package examples:
+- Ubuntu/Debian: `sudo apt-get install -y pkg-config`
+- Fedora: `sudo dnf install -y pkgconf-pkg-config`
+- Arch: `sudo pacman -S pkgconf`
 
 ---
 
 ## Quick Start
 
-### 1. Open your project and create an export preset in Godot
+### 1. Create an export preset
 
-1. Open your project in Godot Editor.
-2. Go to **Project → Export**.
-3. Create or select a **Windows Desktop** preset.
-4. Save and close the export dialogue.
+Open your project in Godot, go to **Project → Export**, create or select the preset for the target you are building, then save `export_presets.cfg`.
 
-This creates/updates `export_presets.cfg`, which you will configure using the paths `gst` prints after compilation.
+`gst` prints the template paths you will paste into that preset.
 
-### 2. Run gst to compile templates and prepare key material
+### 2. Run `gst create`
 
 ```bash
 cd /path/to/your/game
 gst create
 ```
 
-`gst` will:
-- compile (or cache-hit) encrypted Windows templates
-- generate or reuse `.gst/encryption.key`
-- print next steps for setting template paths and key usage in Godot
+`gst` will compile or reuse the target templates, generate or reuse `.gst/encryption.key`, and print the remaining setup steps.
 
 **Flags:**
-- `--godot-version VERSION` (recommended) — explicit Godot version to compile (must match project minor line)
+- `--godot-version VERSION` (recommended) — explicit Godot version to compile. Accepts `X.Y` or `X.Y.Z` and must match the project minor line.
+- If you omit `--godot-version`, `gst` tries a local Godot editor on `PATH` (or `--godot-editor-path`), then the latest stable release for the project minor line from GitHub, then prompts interactively.
+- For CI or automation, always set `--godot-version` to avoid prompts and version drift.
+- `--godot-editor-path PATH` — use this specific Godot editor binary for local version detection.
+- `--platform TUPLE` — target platform tuple for the build. Today, the supported tuples are `windows/amd64` on Windows hosts and `linux/amd64` on Linux/POSIX hosts. Defaults to host if not supplied.
 - `--verbose` — Show detailed build output
 - `--keep-runtime` — Preserve toolchain after build (useful for repeated builds or debugging)
 - `--force-rebuild` — Skip cache; always recompile templates
+- `--verify-only` — Provision and verify compile readiness (python, zig, scons, Godot source, SCons dry-run) without generating templates, key material, or manifest
 - `--regenerate-key` — Generate a new encryption key (requires confirmation)
 - `--force` — Skip all confirmations (CI/automation mode)
 
 ### 3. Export your game
 
-1. Open **Project → Export** again.
-2. Confirm the **Windows Desktop** preset is selected.
-3. Export the project.
-4. Your build uses the custom templates and encryption key you configured.
+Open **Project → Export** again, confirm the preset that matches the templates you built, then export.
+
+Your build uses the custom templates and encryption key you configured.
+
+### 4. Clean up generated files
+
+Use `gst clean` to remove the generated `.gst/` workspace, including runtime tools, compiled templates, and key material.
 
 ---
 
@@ -310,7 +309,7 @@ The current branch does not auto-edit Godot config files.
 
 ### Future Releases
 
-- **Slice 2 (Multi-Platform):** Linux, Web, macOS/iOS, Android (same `gst` command)
+- **Slice 2 (Multi-Platform):** Linux on POSIX hosts, Web with Emscripten, macOS/iOS, Android (same `gst` command, within upstream Godot host/toolchain constraints)
 - **Slice 3 (CI/Automation):** `--non-interactive`, `--json`, secret-safe logging
 
 ### Contributing

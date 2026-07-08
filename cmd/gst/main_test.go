@@ -54,6 +54,7 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 	flag := createCmd.Flag("godot-version")
 	platformFlag := createCmd.Flag("platform")
 	editorPathFlag := createCmd.Flag("godot-editor-path")
+	verifyOnlyFlag := createCmd.Flag("verify-only")
 
 	// THEN the create subcommand should be discoverable
 	assert.NoError(t, err, "create subcommand should be registered on root command")
@@ -65,6 +66,9 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 
 	// AND the create command should expose editor path override for local-editor strategy
 	assert.NotNil(t, editorPathFlag, "create command should define the godot-editor-path flag")
+
+	// AND the create command should expose verify-only mode for integration readiness checks
+	assert.NotNil(t, verifyOnlyFlag, "create command should define the verify-only flag")
 
 	// AND the platform flag should default to the detected host tuple
 	assert.NotNil(t, platformFlag, "create command should define the platform flag")
@@ -105,11 +109,11 @@ func TestResolveTargetPlatform(t *testing.T) {
 			wantErr:      false,
 		},
 		{
-			name:         "linux tuple is unknown when plugin is not registered",
+			name:         "linux tuple supported",
 			input:        "linux/amd64",
 			wantTuple:    "linux/amd64",
-			wantPlatform: "",
-			wantErr:      true,
+			wantPlatform: "linux",
+			wantErr:      false,
 		},
 		{
 			name:         "unknown tuple unsupported",
@@ -269,7 +273,7 @@ func TestBuildToolchainChecksums(t *testing.T) {
 	// GIVEN toolchain component metadata with pinned checksums
 	components := []internal.Artifact{
 		{Name: "python", SHA256: "abc"},
-		{Name: "mingw", SHA256: "def"},
+		{Name: "zig", SHA256: "def"},
 		{Name: "godot_source", SHA256: "placeholder_godot_4.6.3"},
 	}
 
@@ -278,7 +282,7 @@ func TestBuildToolchainChecksums(t *testing.T) {
 
 	// THEN all component checksums should be indexed by component name
 	assert.Equal(t, "abc", checksums["python"], "Python checksum should be preserved in map")
-	assert.Equal(t, "def", checksums["mingw"], "MinGW checksum should be preserved in map")
+	assert.Equal(t, "def", checksums["zig"], "Zig checksum should be preserved in map")
 	assert.Equal(t, "", checksums["godot_source"], "Legacy placeholder checksums should be normalized to empty for cache compatibility")
 	assert.Len(t, checksums, 3, "Checksum map should include all components")
 }

@@ -92,7 +92,7 @@ func TestLoaderWrite(t *testing.T) {
 		Success:                 true,
 		ToolchainChecksums: map[string]string{
 			"python": "abc123",
-			"mingw":  "def456",
+			"zig":    "def456",
 		},
 		TemplateRelease: "hash_release",
 		TemplateDebug:   "hash_debug",
@@ -183,7 +183,7 @@ func TestCacheKeyEquals(t *testing.T) {
 				ToolVersion:  "0.1.0",
 				ToolchainChecksums: map[string]string{
 					"python": "abc123",
-					"mingw":  "def456",
+					"zig":    "def456",
 				},
 			},
 			key2: &CacheKey{
@@ -192,7 +192,7 @@ func TestCacheKeyEquals(t *testing.T) {
 				ToolVersion:  "0.1.0",
 				ToolchainChecksums: map[string]string{
 					"python": "abc123",
-					"mingw":  "def456",
+					"zig":    "def456",
 				},
 			},
 			wantEq: true,

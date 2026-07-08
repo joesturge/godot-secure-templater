@@ -79,15 +79,15 @@ func TestResolveTargetTuple(t *testing.T) {
 
 func TestValidateHostSupport(t *testing.T) {
 	def := Definition{
-		ID:          "windows",
+		HostTuple:   "windows/amd64",
 		TargetTuple: "windows/amd64",
-		SupportedHostTuples: map[string]struct{}{
-			"windows/amd64": {},
-		},
 		Components: func(version string) ([]internal.Artifact, *internal.Error) {
 			return []internal.Artifact{}, nil
 		},
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
+			return nil
+		},
+		Verify: func(ctx *internal.RunContext) *internal.Error {
 			return nil
 		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
@@ -110,4 +110,65 @@ func TestValidateHostSupport(t *testing.T) {
 	// THEN a typed compatibility error should be returned
 	assert.NotNil(t, disallowedErr, "ValidateHostSupport should fail for unsupported host-target combination")
 	assert.Equal(t, internal.ExitUsageError, disallowedErr.Code, "Unsupported host-target tuple should map to usage error exit code")
+}
+
+func TestLookupHostTarget(t *testing.T) {
+	// GIVEN an isolated registry and two host-specific definitions for one target tuple
+	originalRegistry := registry
+	registry = map[string]Definition{}
+	t.Cleanup(func() {
+		registry = originalRegistry
+	})
+
+	Register(Definition{
+		HostTuple:   "windows/amd64",
+		TargetTuple: "windows/amd64",
+		Components: func(version string) ([]internal.Artifact, *internal.Error) {
+			return []internal.Artifact{}, nil
+		},
+		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
+			return nil
+		},
+		Verify: func(ctx *internal.RunContext) *internal.Error {
+			return nil
+		},
+		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
+			return "", ""
+		},
+		SuccessNextSteps: func() []string {
+			return []string{"dummy"}
+		},
+	})
+
+	Register(Definition{
+		HostTuple:   "linux/amd64",
+		TargetTuple: "windows/amd64",
+		Components: func(version string) ([]internal.Artifact, *internal.Error) {
+			return []internal.Artifact{}, nil
+		},
+		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
+			return nil
+		},
+		Verify: func(ctx *internal.RunContext) *internal.Error {
+			return nil
+		},
+		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
+			return "", ""
+		},
+		SuccessNextSteps: func() []string {
+			return []string{"dummy"}
+		},
+	})
+
+	// WHEN looking up exact host-target pairs
+	winDef, winOK := LookupHostTarget("windows/amd64", "windows/amd64")
+	linuxDef, linuxOK := LookupHostTarget("linux/amd64", "windows/amd64")
+	_, missingOK := LookupHostTarget("darwin/arm64", "windows/amd64")
+
+	// THEN each exact pair should resolve to its own definition
+	assert.True(t, winOK, "LookupHostTarget should resolve registered windows-host pair")
+	assert.Equal(t, "windows/amd64", winDef.HostTuple, "LookupHostTarget should return definition for exact windows host tuple")
+	assert.True(t, linuxOK, "LookupHostTarget should resolve registered linux-host pair")
+	assert.Equal(t, "linux/amd64", linuxDef.HostTuple, "LookupHostTarget should return definition for exact linux host tuple")
+	assert.False(t, missingOK, "LookupHostTarget should fail when host-target pair is not registered")
 }

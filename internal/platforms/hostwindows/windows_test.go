@@ -1,4 +1,4 @@
-package windows
+package hostwindows
 
 import (
 	"path/filepath"
@@ -8,39 +8,32 @@ import (
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/platform"
-	"github.com/joemi/godot-secure-templater/internal/toolchain"
 )
 
 func TestWindowsPluginRegistersDefinition(t *testing.T) {
 	// GIVEN the windows platform plugin package init has registered itself
 
 	// WHEN looking up the windows platform definition
-	def, ok := platform.Lookup("windows")
+	def, ok := platform.LookupHostTarget("windows/amd64", "windows/amd64")
 
 	// THEN the registry should contain the windows platform
 	assert.True(t, ok, "Windows plugin should register a windows platform definition")
-	assert.Equal(t, "windows", def.ID, "Windows platform id should be normalized to windows")
 	assert.Equal(t, "windows/amd64", def.TargetTuple, "Windows plugin should target windows/amd64 tuple")
 
 	// AND required callbacks should be available
 	assert.NotNil(t, def.Components, "Windows platform should provide a component resolver callback")
 	assert.NotNil(t, def.Compile, "Windows platform should provide a compile callback")
+	assert.NotNil(t, def.Verify, "Windows platform should provide a verify callback")
 	assert.NotNil(t, def.ArtifactPaths, "Windows platform should provide artifact-path resolver callback")
 	assert.NotNil(t, def.SuccessNextSteps, "Windows platform should provide success-next-steps callback")
 
-	// AND host support should include windows/amd64
-	_, hostSupported := def.SupportedHostTuples["windows/amd64"]
-	assert.True(t, hostSupported, "Windows plugin should declare windows/amd64 host compatibility")
+	// AND host tuple should be windows/amd64
+	assert.Equal(t, "windows/amd64", def.HostTuple, "Windows plugin should declare windows/amd64 host tuple")
 }
 
 func TestWindowsPluginComponents(t *testing.T) {
-	resolveGodotChecksum = func(version string) string { return "stub-checksum" }
-	defer func() {
-		resolveGodotChecksum = toolchain.GodotChecksumForVersion
-	}()
-
 	// GIVEN a registered windows platform definition
-	def, ok := platform.Lookup("windows")
+	def, ok := platform.LookupHostTarget("windows/amd64", "windows/amd64")
 	assert.True(t, ok, "Windows platform should exist in registry for component-resolution tests")
 
 	// WHEN resolving components for a known Godot version
@@ -56,20 +49,20 @@ func TestWindowsPluginComponents(t *testing.T) {
 		names[c.Name] = true
 	}
 	assert.True(t, names["python"], "Windows component list should include python artifact")
-	assert.True(t, names["mingw"], "Windows component list should include mingw artifact")
+	assert.True(t, names["zig"], "Windows component list should include zig artifact")
 	assert.True(t, names["scons"], "Windows component list should include scons artifact")
 	assert.True(t, names["godot_source"], "Windows component list should include godot_source artifact")
 
 	for _, c := range components {
 		if c.Name == "godot_source" {
-			assert.Equal(t, "stub-checksum", c.SHA256, "Godot checksum should come from resolver callback")
+			assert.Empty(t, c.SHA256, "Godot source should not require a checksum")
 		}
 	}
 }
 
 func TestWindowsPluginArtifactPaths(t *testing.T) {
 	// GIVEN a registered windows platform definition and workspace path
-	def, ok := platform.Lookup("windows")
+	def, ok := platform.LookupHostTarget("windows/amd64", "windows/amd64")
 	assert.True(t, ok, "Windows platform should exist in registry for artifact-path tests")
 
 	workspace := &internal.Workspace{Templates: filepath.Join("/tmp", "project", ".gst", "templates")}
@@ -84,7 +77,7 @@ func TestWindowsPluginArtifactPaths(t *testing.T) {
 
 func TestWindowsPluginSuccessNextSteps(t *testing.T) {
 	// GIVEN a registered windows platform definition
-	def, ok := platform.Lookup("windows")
+	def, ok := platform.LookupHostTarget("windows/amd64", "windows/amd64")
 	assert.True(t, ok, "Windows platform should exist in registry for success-next-steps tests")
 
 	// WHEN resolving success next steps
@@ -95,4 +88,14 @@ func TestWindowsPluginSuccessNextSteps(t *testing.T) {
 	assert.Contains(t, steps[0], "Godot Editor", "Windows success steps should guide the user in the editor flow")
 	assert.Contains(t, steps[2], "windows_template_release.exe", "Windows success steps should mention the release template path")
 	assert.Contains(t, steps[4], "encryption.key", "Windows success steps should mention the key file path")
+}
+
+func TestWindowsHostLinuxTargetNotRegistered(t *testing.T) {
+	// GIVEN the windows plugin package init has registered only supported tuples
+
+	// WHEN looking up the windows-host linux-target tuple pair
+	_, ok := platform.LookupHostTarget("windows/amd64", "linux/amd64")
+
+	// THEN the registry should not advertise linux as supported on a Windows host yet
+	assert.False(t, ok, "Windows plugin should not register a windows/amd64 -> linux/amd64 tuple definition yet")
 }

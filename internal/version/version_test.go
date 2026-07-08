@@ -34,10 +34,16 @@ func TestNormalizeVersion(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "invalid format - missing patch",
+			name:    "version without patch",
 			input:   "4.3",
-			wantVer: "",
-			wantErr: true,
+			wantVer: "4.3.0",
+			wantErr: false,
+		},
+		{
+			name:    "feature release without patch",
+			input:   "4.7",
+			wantVer: "4.7.0",
+			wantErr: false,
 		},
 		{
 			name:    "invalid format - non-numeric",

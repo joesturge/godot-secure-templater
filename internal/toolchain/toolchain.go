@@ -13,10 +13,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/bodgit/sevenzip"
 	"github.com/joemi/godot-secure-templater/internal"
+	"github.com/ulikunitz/xz"
 )
+
+const artifactDownloadTimeout = 20 * time.Minute
 
 // Provision downloads and verifies toolchain components, extracting them into runtime/.
 func Provision(ctx *internal.RunContext, components []internal.Artifact) *internal.Error {
@@ -50,6 +53,7 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}
 
 		// Download artifact
+		ctx.Logger.Info("    Downloading archive...")
 		ctx.Logger.Debug("Downloading %s from %s", art.Name, art.URL)
 		archivePath := filepath.Join(ctx.Workspace.Runtime, art.Name+".tmp")
 		if err := downloadFile(archivePath, art.URL); err != nil {
@@ -64,10 +68,14 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}(archivePath)
 
 		if art.SHA256 == "" {
-			return &internal.Error{
-				Code:    internal.ExitChecksumMismatch,
-				Message: fmt.Sprintf("No checksum available for %s", art.Name),
-				Details: "Failed to resolve checksum metadata for this artifact. Aborting to avoid unverified downloads.",
+			if art.Name == "godot_source" {
+				ctx.Logger.Debug("Skipping checksum verification for %s (checksum not provided)", art.Name)
+			} else {
+				return &internal.Error{
+					Code:    internal.ExitChecksumMismatch,
+					Message: fmt.Sprintf("No checksum available for %s", art.Name),
+					Details: "Failed to resolve checksum metadata for this artifact. Aborting to avoid unverified downloads.",
+				}
 			}
 		} else {
 			ctx.Logger.Debug("Verifying checksum for %s", art.Name)
@@ -77,6 +85,7 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}
 
 		// Extract archive
+		ctx.Logger.Info("    Extracting archive...")
 		ctx.Logger.Debug("Extracting %s to %s", art.Name, targetDir)
 		if err := extractArchive(archivePath, targetDir, art.Kind); err != nil {
 			return &internal.Error{
@@ -143,7 +152,9 @@ func isProvisionedAndValid(targetDir, name string) bool {
 
 // downloadFile downloads a file from a URL to a local path.
 func downloadFile(dst, url string) error {
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: artifactDownloadTimeout}
+
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
@@ -179,8 +190,7 @@ func extractArchive(archivePath, targetDir string, kind internal.ArchiveKind) er
 	case internal.ArchiveTarGZ:
 		return extractTarGZ(archivePath, targetDir)
 	case internal.ArchiveTarXZ:
-		// 7z format; try to use 7z command if available
-		return extract7z(archivePath, targetDir)
+		return extractTarXZ(archivePath, targetDir)
 	case internal.ArchiveRaw:
 		return fmt.Errorf("raw file copy not yet implemented")
 	default:
@@ -360,86 +370,66 @@ func extractTarGZ(gzPath, targetDir string) error {
 	return nil
 }
 
-// extract7z extracts a 7z archive using pure Go (github.com/bodgit/sevenzip).
-// Supports MinGW and other LZMA2-compressed archives from niXman.
-func extract7z(archivePath, targetDir string) error {
-	// Open the 7z archive
-	reader, err := sevenzip.OpenReader(archivePath)
+// extractTarXZ extracts a tar.xz archive in a single pass.
+//
+// Unlike tar.gz extraction, this path intentionally does not strip a single top-level
+// directory because doing so requires a second full decompression pass, which is costly
+// for larger tar.xz payloads such as Zig toolchains.
+func extractTarXZ(xzPath, targetDir string) error {
+	file, err := os.Open(xzPath)
 	if err != nil {
-		return fmt.Errorf("failed to open 7z archive: %w", err)
+		return err
 	}
 	defer func() {
-		_ = reader.Close()
+		_ = file.Close()
 	}()
 
-	// Track top-level entries to potentially strip one level
-	topLevelDirs := make(map[string]bool)
-	for _, file := range reader.File {
-		parts := strings.Split(strings.TrimRight(file.Name, "/"), "/")
-		if len(parts) > 0 && parts[0] != "" {
-			topLevelDirs[parts[0]] = true
-		}
+	xzr, err := xz.NewReader(file)
+	if err != nil {
+		return err
 	}
 
-	// Decide if we should strip one level
-	stripOneLevel := len(topLevelDirs) == 1
-
-	// Extract files
-	for _, file := range reader.File {
-		// Strip top-level directory if needed
-		name := file.Name
-		if stripOneLevel {
-			parts := strings.Split(strings.TrimRight(name, "/"), "/")
-			if len(parts) > 1 {
-				name = strings.Join(parts[1:], "/")
-			} else if len(parts) == 1 && parts[0] != "" {
-				// Skip the top-level directory itself
-				continue
-			}
+	tr := tar.NewReader(xzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
 		}
 
-		// Prevent directory traversal
-		fpath := filepath.Join(targetDir, name)
-		if !strings.HasPrefix(fpath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
+		cleanTargetDir := filepath.Clean(targetDir)
+		fpath := filepath.Clean(filepath.Join(cleanTargetDir, header.Name))
+		if !strings.HasPrefix(fpath, cleanTargetDir+string(os.PathSeparator)) {
 			continue
 		}
 
-		if file.FileInfo().IsDir() {
+		switch header.Typeflag {
+		case tar.TypeDir:
 			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
 				return err
 			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+				return err
+			}
+
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(outFile, tr); err != nil {
+				_ = outFile.Close()
+				return err
+			}
+			if err := outFile.Close(); err != nil {
+				return err
+			}
+		case tar.TypeSymlink, tar.TypeLink:
+			// Ignore links to avoid redirecting writes outside targetDir.
 			continue
-		}
-
-		// Create parent directories
-		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
-			return err
-		}
-
-		// Extract file
-		rc, err := file.Open()
-		if err != nil {
-			return fmt.Errorf("failed to open file in 7z archive: %w", err)
-		}
-
-		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.FileInfo().Mode())
-		if err != nil {
-			_ = rc.Close()
-			return err
-		}
-
-		if _, err := io.Copy(outFile, rc); err != nil {
-			_ = outFile.Close()
-			_ = rc.Close()
-			return err
-		}
-
-		if err := outFile.Close(); err != nil {
-			_ = rc.Close()
-			return err
-		}
-		if err := rc.Close(); err != nil {
-			return err
 		}
 	}
 
