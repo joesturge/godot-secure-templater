@@ -54,6 +54,7 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 	flag := createCmd.Flag("godot-version")
 	platformFlag := createCmd.Flag("platform")
 	editorPathFlag := createCmd.Flag("godot-editor-path")
+	verifyOnlyFlag := createCmd.Flag("verify-only")
 
 	// THEN the create subcommand should be discoverable
 	assert.NoError(t, err, "create subcommand should be registered on root command")
@@ -65,6 +66,9 @@ func TestRootCommand_HasCreateSubcommandAndRequiredFlag(t *testing.T) {
 
 	// AND the create command should expose editor path override for local-editor strategy
 	assert.NotNil(t, editorPathFlag, "create command should define the godot-editor-path flag")
+
+	// AND the create command should expose verify-only mode for integration readiness checks
+	assert.NotNil(t, verifyOnlyFlag, "create command should define the verify-only flag")
 
 	// AND the platform flag should default to the detected host tuple
 	assert.NotNil(t, platformFlag, "create command should define the platform flag")

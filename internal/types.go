@@ -24,6 +24,7 @@ type Flags struct {
 	GodotVersion string // --godot-version
 	Platform     string // hard-wired "windows" in Slice 0
 	KeepRuntime  bool   // --keep-runtime
+	VerifyOnly   bool   // --verify-only
 	Interactive  bool   // negated by absence of stdin (Slice 2)
 }
 

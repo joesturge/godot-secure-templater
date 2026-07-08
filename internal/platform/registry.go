@@ -14,6 +14,7 @@ type Definition struct {
 	TargetTuple      string
 	Components       func(version string) ([]internal.Artifact, *internal.Error)
 	Compile          func(ctx *internal.RunContext, key string) *internal.Error
+	Verify           func(ctx *internal.RunContext) *internal.Error
 	ArtifactPaths    func(workspace *internal.Workspace) (releasePath string, debugPath string)
 	SuccessNextSteps func() []string
 }
@@ -37,6 +38,9 @@ func Register(def Definition) {
 	}
 	if def.Compile == nil {
 		panic("platform.Register: compiler callback is nil")
+	}
+	if def.Verify == nil {
+		panic("platform.Register: verify callback is nil")
 	}
 	if def.ArtifactPaths == nil {
 		panic("platform.Register: artifact-path callback is nil")

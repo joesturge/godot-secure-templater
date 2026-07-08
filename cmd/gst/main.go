@@ -54,6 +54,7 @@ export configuration. Requires --godot-version in Slice 0.`,
 	flagGodotEditorPath string
 	flagKeepRuntime     bool
 	flagForceRebuild    bool
+	flagVerifyOnly      bool
 	flagRegenerateKey   bool
 	flagForce           bool
 	flagVerbose         bool
@@ -65,6 +66,7 @@ func init() {
 	createCmd.Flags().StringVar(&flagGodotEditorPath, "godot-editor-path", "", "Path to Godot editor binary used for local version resolution")
 	createCmd.Flags().BoolVar(&flagKeepRuntime, "keep-runtime", false, "Keep toolchain runtime after successful build")
 	createCmd.Flags().BoolVar(&flagForceRebuild, "force-rebuild", false, "Skip idempotency check; always rebuild")
+	createCmd.Flags().BoolVar(&flagVerifyOnly, "verify-only", false, "Verify compile readiness only (provision + tool checks + SCons dry-run), without building templates")
 	createCmd.Flags().BoolVar(&flagRegenerateKey, "regenerate-key", false, "Generate new encryption key (requires confirmation unless --force)")
 	createCmd.Flags().BoolVar(&flagForce, "force", false, "Skip all confirmations (for automation/CI)")
 	createCmd.Flags().BoolVar(&flagVerbose, "verbose", false, "Verbose output")
@@ -166,6 +168,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		Platform:        targetPlatform,
 		KeepRuntime:     flagKeepRuntime,
 		ForceRebuild:    flagForceRebuild,
+		VerifyOnly:      flagVerifyOnly,
 		RegenerateKey:   flagRegenerateKey,
 		Force:           flagForce,
 		Verbose:         flagVerbose,
@@ -218,7 +221,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// ============================================================================
 
 	canSkip := false
-	if flagForceRebuild {
+	if flagVerifyOnly {
+		logger.Info("Verify-only mode requested; skipping cache check")
+	} else if flagForceRebuild {
 		logger.Info("Force rebuild requested; skipping cache check")
 	} else if flagRegenerateKey {
 		logger.Info("Key regeneration requested; skipping cache check")
@@ -255,13 +260,33 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			GodotVersion: flagGodotVersion,
 			Platform:     targetPlatform,
 			KeepRuntime:  flagKeepRuntime,
+			VerifyOnly:   flagVerifyOnly,
 			Interactive:  !flagForce,
 		},
 		Logger: logger,
 	}
 
 	// ============================================================================
-	// PHASE 5: KEY REGENERATION & CRYPTO
+	// PHASE 5: TOOLCHAIN PROVISIONING
+	// ============================================================================
+
+	logger.Info("Provisioning toolchain...")
+	if err := toolchain.Provision(ctx, components); err != nil {
+		return err
+	}
+
+	if flagVerifyOnly {
+		logger.Info("Verifying compile readiness (no templates, key, or manifest changes)...")
+		if err := platformDef.Verify(ctx); err != nil {
+			return err
+		}
+
+		logger.Info("Success! Compile prerequisites verified for %s on %s.", targetTuple, hostTuple)
+		return nil
+	}
+
+	// ============================================================================
+	// PHASE 6: KEY REGENERATION & CRYPTO
 	// ============================================================================
 
 	logger.Info("Managing encryption key...")
@@ -289,15 +314,6 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return keyErr
 	}
 	logger.Info("Encryption key ready (reusing existing or generated new)")
-
-	// ============================================================================
-	// PHASE 6: TOOLCHAIN PROVISIONING
-	// ============================================================================
-
-	logger.Info("Provisioning toolchain...")
-	if err := toolchain.Provision(ctx, components); err != nil {
-		return err
-	}
 
 	// ============================================================================
 	// PHASE 7: COMPILATION

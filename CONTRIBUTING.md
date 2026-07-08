@@ -42,6 +42,41 @@ go test ./cmd/gst ./internal/platforms/hostwindows ./internal/platforms/hostlinu
 go test ./...
 ```
 
+## Integration Smoke Tests (Local)
+
+The integration workflow uses `.github/scripts/integration-smoke.sh`. You can run the same script locally in either mode.
+
+Linux host example:
+
+```bash
+mkdir -p dist
+go build -o dist/gst ./cmd/gst
+
+# Fast readiness check (no template compile)
+bash .github/scripts/integration-smoke.sh \
+	"$PWD" \
+	"$PWD/dist/gst" \
+	"4.7" \
+	"linux/amd64" \
+	"verify" \
+	"linux_template_release.x86_64" \
+	"linux_template_debug.x86_64" \
+	"$PWD/.github/fixtures/integration-project"
+
+# Full compile smoke check
+bash .github/scripts/integration-smoke.sh \
+	"$PWD" \
+	"$PWD/dist/gst" \
+	"4.7" \
+	"linux/amd64" \
+	"compile" \
+	"linux_template_release.x86_64" \
+	"linux_template_debug.x86_64" \
+	"$PWD/.github/fixtures/integration-project"
+```
+
+Use `windows/amd64` and `windows_template_*.exe` for Windows-host smoke runs.
+
 ## Testing Conventions
 
 For `*_test.go` files:

@@ -5,6 +5,21 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Integration mode to execute
+        required: true
+        default: verify
+        type: choice
+        options:
+          - verify
+          - compile
+      godot_version:
+        description: Godot version passed to gst create
+        required: true
+        default: '4.7'
+        type: string
 
 permissions:
   contents: read
@@ -54,6 +69,7 @@ jobs:
 
       - name: Run integration smoke test
         env:
-          GST_GODOT_VERSION: '4.7'
+          GST_GODOT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}
+          GST_INTEGRATION_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'verify' }}
         run: |
-          bash .github/scripts/integration-smoke.sh "$PWD" "$PWD/dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" "${{ matrix.expected_release }}" "${{ matrix.expected_debug }}" "$PWD/.github/fixtures/integration-project"
+          bash .github/scripts/integration-smoke.sh "$PWD" "$PWD/dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" "$GST_INTEGRATION_MODE" "${{ matrix.expected_release }}" "${{ matrix.expected_debug }}" "$PWD/.github/fixtures/integration-project"

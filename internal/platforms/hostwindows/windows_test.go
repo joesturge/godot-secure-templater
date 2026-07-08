@@ -23,6 +23,7 @@ func TestWindowsPluginRegistersDefinition(t *testing.T) {
 	// AND required callbacks should be available
 	assert.NotNil(t, def.Components, "Windows platform should provide a component resolver callback")
 	assert.NotNil(t, def.Compile, "Windows platform should provide a compile callback")
+	assert.NotNil(t, def.Verify, "Windows platform should provide a verify callback")
 	assert.NotNil(t, def.ArtifactPaths, "Windows platform should provide artifact-path resolver callback")
 	assert.NotNil(t, def.SuccessNextSteps, "Windows platform should provide success-next-steps callback")
 

@@ -23,6 +23,7 @@ func TestLinuxPluginRegistersDefinition(t *testing.T) {
 	// AND required callbacks should be available
 	assert.NotNil(t, def.Components, "Linux platform should provide a component resolver callback")
 	assert.NotNil(t, def.Compile, "Linux platform should provide a compile callback")
+	assert.NotNil(t, def.Verify, "Linux platform should provide a verify callback")
 	assert.NotNil(t, def.ArtifactPaths, "Linux platform should provide artifact-path resolver callback")
 	assert.NotNil(t, def.SuccessNextSteps, "Linux platform should provide success-next-steps callback")
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/longpath"
+	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
 )
 
 const pythonModuleSCons = "python_module_scons"
@@ -83,6 +84,48 @@ func BuildCommand(pythonExe string, sconsExe string, sconsArgs []string, logger 
 
 	logger.Info("    Using SCons script directly")
 	return exec.Command(pythonExe, append([]string{sconsExe}, sconsArgs...)...)
+}
+
+// VerifyCompileReadiness validates that runtime tools are discoverable and that a no-build SCons invocation succeeds.
+func VerifyCompileReadiness(ctx *internal.RunContext, hostTuple string, profile targetprofiles.SConsTargetProfile) *internal.Error {
+	tools, err := ResolveRuntimeTools(ctx.Workspace, ctx.Logger)
+	if err != nil {
+		return err
+	}
+
+	hostAdapter := AdapterForHostTuple(hostTuple)
+	hostAdapter.NormalizeRuntimeTools(tools)
+	env := mergedEnv(hostAdapter.BuildEnv(ctx.Workspace, "verify-only"))
+
+	if err := runProbe("python version", exec.Command(tools.PythonExe, "--version"), env, ""); err != nil {
+		return err
+	}
+	if err := runProbe("zig version", exec.Command("zig", "version"), env, ""); err != nil {
+		return err
+	}
+
+	sconsVersion := BuildCommand(tools.PythonExe, tools.SConsExe, []string{"--version"}, ctx.Logger)
+	if err := runProbe("scons version", sconsVersion, env, ""); err != nil {
+		return err
+	}
+
+	sconsArgs := []string{
+		fmt.Sprintf("platform=%s", profile.SConsPlatform),
+		"target=template_release",
+		"dev_build=no",
+		"optimize=speed",
+	}
+	if len(profile.ExtraSConsArgs) > 0 {
+		sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
+	}
+	sconsArgs = append(sconsArgs, "-n")
+
+	dryRun := BuildCommand(tools.PythonExe, tools.SConsExe, sconsArgs, ctx.Logger)
+	if err := runProbe("scons dry-run", dryRun, env, tools.GodotSource); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (windowsHostAdapter) NormalizeRuntimeTools(tools *RuntimeTools) {
@@ -239,4 +282,37 @@ func findGodotSource(baseDir string) (string, error) {
 		names = append(names, entry.Name())
 	}
 	return "", fmt.Errorf("no godot-* directory found in %s\nfound instead: %v\nthis usually means the Godot source extraction failed\ntry running with --force-rebuild to re-extract", baseDir, names)
+}
+
+func mergedEnv(overrides map[string]string) []string {
+	env := os.Environ()
+	filtered := make([]string, 0, len(env))
+	for _, e := range env {
+		key := strings.SplitN(e, "=", 2)[0]
+		if _, ok := overrides[key]; !ok {
+			filtered = append(filtered, e)
+		}
+	}
+	for k, v := range overrides {
+		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
+	}
+	return filtered
+}
+
+func runProbe(name string, cmd *exec.Cmd, env []string, dir string) *internal.Error {
+	cmd.Env = env
+	if strings.TrimSpace(dir) != "" {
+		cmd.Dir = dir
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: fmt.Sprintf("Compile readiness check failed: %s", name),
+			Details: fmt.Sprintf("%v\n%s", err, strings.TrimSpace(string(output))),
+		}
+	}
+
+	return nil
 }

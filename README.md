@@ -120,6 +120,7 @@ gst create
 - `--verbose` — Show detailed build output
 - `--keep-runtime` — Preserve toolchain after build (useful for repeated builds or debugging)
 - `--force-rebuild` — Skip cache; always recompile templates
+- `--verify-only` — Provision and verify compile readiness (python, zig, scons, Godot source, SCons dry-run) without generating templates, key material, or manifest
 - `--regenerate-key` — Generate a new encryption key (requires confirmation)
 - `--force` — Skip all confirmations (CI/automation mode)
 

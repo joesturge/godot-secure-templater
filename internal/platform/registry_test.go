@@ -87,6 +87,9 @@ func TestValidateHostSupport(t *testing.T) {
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
 			return nil
 		},
+		Verify: func(ctx *internal.RunContext) *internal.Error {
+			return nil
+		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 			return "", ""
 		},
@@ -126,6 +129,9 @@ func TestLookupHostTarget(t *testing.T) {
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
 			return nil
 		},
+		Verify: func(ctx *internal.RunContext) *internal.Error {
+			return nil
+		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 			return "", ""
 		},
@@ -141,6 +147,9 @@ func TestLookupHostTarget(t *testing.T) {
 			return []internal.Artifact{}, nil
 		},
 		Compile: func(ctx *internal.RunContext, key string) *internal.Error {
+			return nil
+		},
+		Verify: func(ctx *internal.RunContext) *internal.Error {
 			return nil
 		},
 		ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
