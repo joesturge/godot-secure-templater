@@ -12,8 +12,33 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
 )
 
+var lookPathFn = exec.LookPath
+
+func ensureHostDependencies() *internal.Error {
+	if _, err := lookPathFn("pkg-config"); err == nil {
+		return nil
+	}
+
+	return &internal.Error{
+		Code:    internal.ExitBuildFailed,
+		Message: "Missing required host dependency: pkg-config",
+		Details: "Linux template builds require pkg-config for Godot's linuxbsd SCons checks. Install pkg-config (or pkgconf) on the host and rerun.\nUbuntu/Debian: sudo apt-get install -y pkg-config\nFedora: sudo dnf install -y pkgconf-pkg-config\nArch: sudo pacman -S pkgconf",
+	}
+}
+
+func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
+	if err := ensureHostDependencies(); err != nil {
+		return err
+	}
+	return sconsworkflow.VerifyCompileReadiness(ctx, hostTuple, profile)
+}
+
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
+		if err := ensureHostDependencies(); err != nil {
+			return nil, err
+		}
+
 		tools, err := sconsworkflow.ResolveRuntimeTools(ctx.Workspace, ctx.Logger)
 		if err != nil {
 			return nil, err

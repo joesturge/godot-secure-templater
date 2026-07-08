@@ -28,13 +28,14 @@ esac
 gst_args=(
 	create
 	--force
-	--force-rebuild
 	--godot-version "${godot_version}"
 	--platform "${target_tuple}"
 )
 
 if [[ "${mode}" == "verify" ]]; then
 	gst_args+=(--verify-only)
+else
+	gst_args+=(--force-rebuild)
 fi
 
 "${cli_bin}" "${gst_args[@]}"

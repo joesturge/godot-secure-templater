@@ -96,11 +96,19 @@ func VerifyCompileReadiness(ctx *internal.RunContext, hostTuple string, profile 
 	hostAdapter := AdapterForHostTuple(hostTuple)
 	hostAdapter.NormalizeRuntimeTools(tools)
 	env := mergedEnv(hostAdapter.BuildEnv(ctx.Workspace, "verify-only"))
+	zigExe, zigErr := resolveZigExecutable(ctx.Workspace.Runtime)
+	if zigErr != nil {
+		return &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: "Compile readiness check failed: zig version",
+			Details: zigErr.Error(),
+		}
+	}
 
 	if err := runProbe("python version", exec.Command(tools.PythonExe, "--version"), env, ""); err != nil {
 		return err
 	}
-	if err := runProbe("zig version", exec.Command("zig", "version"), env, ""); err != nil {
+	if err := runProbe("zig version", exec.Command(zigExe, "version"), env, ""); err != nil {
 		return err
 	}
 
@@ -262,6 +270,37 @@ func resolvePythonExecutable(runtimeDir string) (string, error) {
 
 	_, err := os.Stat(pythonExe)
 	return pythonExe, err
+}
+
+func resolveZigExecutable(runtimeDir string) (string, error) {
+	candidates := []string{
+		filepath.Join(runtimeDir, "zig", "zig.exe"),
+		filepath.Join(runtimeDir, "zig", "zig"),
+	}
+
+	zigBase := filepath.Join(runtimeDir, "zig")
+	if entries, err := os.ReadDir(zigBase); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				candidates = append(candidates,
+					filepath.Join(zigBase, entry.Name(), "zig.exe"),
+					filepath.Join(zigBase, entry.Name(), "zig"),
+				)
+			}
+		}
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	if resolved, err := exec.LookPath("zig"); err == nil {
+		return resolved, nil
+	}
+
+	return "", fmt.Errorf("zig executable not found under %s", zigBase)
 }
 
 func findGodotSource(baseDir string) (string, error) {

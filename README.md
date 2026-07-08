@@ -89,8 +89,14 @@ Clone the repository, then use the host-appropriate build command in [CONTRIBUTI
   - Python 3.11 runtime provisioned automatically
   - Zig 0.16.0 provisioned automatically
   - SCons 4.4.0 provisioned automatically
+  - Linux prerequisite: `pkg-config` must be installed on the host for `linux/amd64` builds
 - Internet connection (first run downloads ~1GB of toolchain)
 - 5+ GB disk space (toolchain + source + build artefacts)
+
+Linux host package examples:
+- Ubuntu/Debian: `sudo apt-get install -y pkg-config`
+- Fedora: `sudo dnf install -y pkgconf-pkg-config`
+- Arch: `sudo pacman -S pkgconf`
 
 ---
 

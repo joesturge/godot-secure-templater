@@ -66,7 +66,7 @@ func init() {
 	createCmd.Flags().StringVar(&flagGodotEditorPath, "godot-editor-path", "", "Path to Godot editor binary used for local version resolution")
 	createCmd.Flags().BoolVar(&flagKeepRuntime, "keep-runtime", false, "Keep toolchain runtime after successful build")
 	createCmd.Flags().BoolVar(&flagForceRebuild, "force-rebuild", false, "Skip idempotency check; always rebuild")
-	createCmd.Flags().BoolVar(&flagVerifyOnly, "verify-only", false, "Verify compile readiness only (provision + tool checks + SCons dry-run), without building templates")
+	createCmd.Flags().BoolVar(&flagVerifyOnly, "verify-only", false, "Verify compile readiness only (provision + tool checks; SCons dry-run when host prerequisites are available), without building templates")
 	createCmd.Flags().BoolVar(&flagRegenerateKey, "regenerate-key", false, "Generate new encryption key (requires confirmation unless --force)")
 	createCmd.Flags().BoolVar(&flagForce, "force", false, "Skip all confirmations (for automation/CI)")
 	createCmd.Flags().BoolVar(&flagVerbose, "verbose", false, "Verbose output")

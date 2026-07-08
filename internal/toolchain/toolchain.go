@@ -13,10 +13,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/ulikunitz/xz"
 )
+
+const artifactDownloadTimeout = 20 * time.Minute
 
 // Provision downloads and verifies toolchain components, extracting them into runtime/.
 func Provision(ctx *internal.RunContext, components []internal.Artifact) *internal.Error {
@@ -50,6 +53,7 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}
 
 		// Download artifact
+		ctx.Logger.Info("    Downloading archive...")
 		ctx.Logger.Debug("Downloading %s from %s", art.Name, art.URL)
 		archivePath := filepath.Join(ctx.Workspace.Runtime, art.Name+".tmp")
 		if err := downloadFile(archivePath, art.URL); err != nil {
@@ -79,6 +83,7 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		}
 
 		// Extract archive
+		ctx.Logger.Info("    Extracting archive...")
 		ctx.Logger.Debug("Extracting %s to %s", art.Name, targetDir)
 		if err := extractArchive(archivePath, targetDir, art.Kind); err != nil {
 			return &internal.Error{
@@ -145,7 +150,9 @@ func isProvisionedAndValid(targetDir, name string) bool {
 
 // downloadFile downloads a file from a URL to a local path.
 func downloadFile(dst, url string) error {
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: artifactDownloadTimeout}
+
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
@@ -361,7 +368,11 @@ func extractTarGZ(gzPath, targetDir string) error {
 	return nil
 }
 
-// extractTarXZ extracts a tar.xz archive, stripping the top-level directory if it's a single root.
+// extractTarXZ extracts a tar.xz archive in a single pass.
+//
+// Unlike tar.gz extraction, this path intentionally does not strip a single top-level
+// directory because doing so requires a second full decompression pass, which is costly
+// for larger tar.xz payloads such as Zig toolchains.
 func extractTarXZ(xzPath, targetDir string) error {
 	file, err := os.Open(xzPath)
 	if err != nil {
@@ -377,7 +388,6 @@ func extractTarXZ(xzPath, targetDir string) error {
 	}
 
 	tr := tar.NewReader(xzr)
-	topLevelDirs := make(map[string]bool)
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -387,42 +397,7 @@ func extractTarXZ(xzPath, targetDir string) error {
 			return err
 		}
 
-		parts := strings.Split(strings.TrimRight(header.Name, "/"), "/")
-		if len(parts) > 0 && parts[0] != "" {
-			topLevelDirs[parts[0]] = true
-		}
-	}
-
-	stripOneLevel := len(topLevelDirs) == 1
-	if _, err := file.Seek(0, 0); err != nil {
-		return err
-	}
-	xzr, err = xz.NewReader(file)
-	if err != nil {
-		return err
-	}
-
-	tr = tar.NewReader(xzr)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		name := header.Name
-		if stripOneLevel {
-			parts := strings.Split(strings.TrimRight(name, "/"), "/")
-			if len(parts) > 1 {
-				name = strings.Join(parts[1:], "/")
-			} else if len(parts) == 1 && parts[0] != "" {
-				continue
-			}
-		}
-
-		fpath := filepath.Join(targetDir, name)
+		fpath := filepath.Join(targetDir, header.Name)
 		if !strings.HasPrefix(fpath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
 			continue
 		}

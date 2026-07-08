@@ -77,3 +77,41 @@ func TestResolvePythonExecutableFallsBackToSystemPython(t *testing.T) {
 	assert.NoError(t, err, "resolvePythonExecutable should fall back to system python on POSIX hosts")
 	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return the python3 found on PATH")
 }
+
+func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {
+	// GIVEN a runtime directory with zig at the runtime root layout
+	runtimeDir := t.TempDir()
+	zigDir := filepath.Join(runtimeDir, "zig")
+	err := os.MkdirAll(zigDir, 0755)
+	assert.NoError(t, err, "Runtime zig directory should be creatable")
+
+	zigPath := filepath.Join(zigDir, "zig")
+	err = os.WriteFile(zigPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "Root zig executable should be creatable")
+
+	// WHEN resolving the zig executable
+	resolved, err := resolveZigExecutable(runtimeDir)
+
+	// THEN it should return the runtime root zig executable
+	assert.NoError(t, err, "resolveZigExecutable should resolve root runtime zig executable")
+	assert.Equal(t, zigPath, resolved, "resolveZigExecutable should return runtime root zig path")
+}
+
+func TestResolveZigExecutable_NestedLayout(t *testing.T) {
+	// GIVEN a runtime directory with zig in nested extracted layout
+	runtimeDir := t.TempDir()
+	nestedDir := filepath.Join(runtimeDir, "zig", "zig-x86_64-linux-0.16.0")
+	err := os.MkdirAll(nestedDir, 0755)
+	assert.NoError(t, err, "Nested zig directory should be creatable")
+
+	zigPath := filepath.Join(nestedDir, "zig")
+	err = os.WriteFile(zigPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "Nested zig executable should be creatable")
+
+	// WHEN resolving the zig executable
+	resolved, err := resolveZigExecutable(runtimeDir)
+
+	// THEN it should return the nested zig executable
+	assert.NoError(t, err, "resolveZigExecutable should resolve nested runtime zig executable")
+	assert.Equal(t, zigPath, resolved, "resolveZigExecutable should return nested zig path")
+}
