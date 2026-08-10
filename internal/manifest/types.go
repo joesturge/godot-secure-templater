@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// Manifest records the inputs and outputs of a successful build run.
-// It enables idempotency (skip rebuild if inputs match) and serves as the cache key.
-type Manifest struct {
+// ManifestEntry records the inputs and outputs of a single successful build run
+// for one platform target. The manifest file stores an array of these entries.
+type ManifestEntry struct {
 	// GodotVersion is the resolved Godot version (e.g., "4.3.0").
 	GodotVersion string `json:"godot_version"`
 
@@ -41,9 +41,14 @@ type Manifest struct {
 	// Config corruption is caught at write time; manifest focuses on build inputs/outputs.
 }
 
-// CacheKey represents the set of inputs that determine build cache validity.
-// If the current build's CacheKey matches the manifest's CacheKey, and the manifest
-// is marked Success=true, the build can be skipped (unless --force-rebuild).
+// Manifest is the full manifest file, which is an array of per-platform entries.
+// Each entry records one platform's build state independently, so multiple platforms
+// can be tracked in a single manifest.json without interfering with each other.
+type Manifest = []ManifestEntry
+
+// CacheKey represents the set of inputs that determine build cache validity for one
+// platform target. If a matching entry is found in the manifest and Success=true,
+// the build can be skipped (unless --force-rebuild).
 type CacheKey struct {
 	GodotVersion       string
 	Platform           string

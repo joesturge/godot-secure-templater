@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Loader handles reading and writing manifest files.
@@ -24,24 +25,31 @@ func NewLoader(workspaceRoot string) *Loader {
 }
 
 // Read loads the manifest from disk. Returns nil if the file doesn't exist or is invalid.
+// Automatically migrates legacy single-object manifests to the array format.
 // Does not fail; caller decides how to handle a missing or corrupted manifest.
-func (l *Loader) Read() *Manifest {
+func (l *Loader) Read() Manifest {
 	data, err := os.ReadFile(l.ManifestPath)
 	if err != nil {
 		return nil
 	}
 
-	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
+	// Try array format first (current schema).
+	var entries []ManifestEntry
+	if err := json.Unmarshal(data, &entries); err == nil {
+		return entries
 	}
 
-	return &m
+	// Fall back to legacy single-object format and wrap in an array.
+	var single ManifestEntry
+	if err := json.Unmarshal(data, &single); err != nil {
+		return nil
+	}
+	return []ManifestEntry{single}
 }
 
 // Write persists the manifest atomically (temp + rename).
 // Returns an error if write fails (e.g., permission denied).
-func (l *Loader) Write(m *Manifest) error {
+func (l *Loader) Write(m Manifest) error {
 	if m == nil {
 		return fmt.Errorf("manifest is nil")
 	}
@@ -66,22 +74,80 @@ func (l *Loader) Write(m *Manifest) error {
 	return nil
 }
 
-// CanSkipBuild checks if the current build inputs match the manifest's cache key
-// and the build was successful. Returns true if rebuild can be skipped.
+// UpsertEntry adds or replaces the entry for the given platform in the manifest.
+// If an entry for the platform already exists it is replaced; otherwise a new entry
+// is appended. The updated manifest is then written atomically.
+func (l *Loader) UpsertEntry(entry ManifestEntry) error {
+	entries := l.Read()
+	if entries == nil {
+		entries = []ManifestEntry{}
+	}
+
+	found := false
+	for i, e := range entries {
+		if e.Platform == entry.Platform {
+			entries[i] = entry
+			found = true
+			break
+		}
+	}
+	if !found {
+		entries = append(entries, entry)
+	}
+
+	return l.Write(entries)
+}
+
+// CanSkipBuild checks whether an entry matching the current platform's cache key
+// already exists in the manifest and was successful. Returns true if rebuild can
+// be skipped.
 func (l *Loader) CanSkipBuild(currentKey *CacheKey) bool {
-	m := l.Read()
-	if m == nil || !m.Success {
+	entries := l.Read()
+	if entries == nil {
 		return false
 	}
 
-	manifestKey := &CacheKey{
-		GodotVersion:       m.GodotVersion,
-		Platform:           m.Platform,
-		ToolchainChecksums: m.ToolchainChecksums,
-		ToolVersion:        m.ToolVersion,
+	for _, e := range entries {
+		if e.Platform != currentKey.Platform {
+			continue
+		}
+		if !e.Success {
+			return false
+		}
+		entryKey := &CacheKey{
+			GodotVersion:       e.GodotVersion,
+			Platform:           e.Platform,
+			ToolchainChecksums: e.ToolchainChecksums,
+			ToolVersion:        e.ToolVersion,
+		}
+		return currentKey.Equals(entryKey)
 	}
 
-	return currentKey.Equals(manifestKey)
+	return false
+}
+
+// BuildEntry constructs a ManifestEntry from the provided build outputs.
+func BuildEntry(
+	godotVersion string,
+	versionResolutionMethod string,
+	platform string,
+	toolchainChecksums map[string]string,
+	toolVersion string,
+	success bool,
+	templateReleaseHash string,
+	templateDebugHash string,
+) ManifestEntry {
+	return ManifestEntry{
+		GodotVersion:            godotVersion,
+		VersionResolutionMethod: versionResolutionMethod,
+		Platform:                platform,
+		ToolchainChecksums:      toolchainChecksums,
+		ToolVersion:             toolVersion,
+		Timestamp:               time.Now().UTC(),
+		Success:                 success,
+		TemplateRelease:         templateReleaseHash,
+		TemplateDebug:           templateDebugHash,
+	}
 }
 
 // ComputeFileHash computes the SHA-256 hash of a file.
