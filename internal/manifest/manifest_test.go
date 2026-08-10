@@ -83,6 +83,24 @@ func TestLoaderRead(t *testing.T) {
 			shouldExist: true,
 			wantNil:     true,
 		},
+		{
+			name:        "object with version=0 is treated as unknown version and rejected",
+			content:     `{"version": 0, "platforms": []}`,
+			shouldExist: true,
+			wantNil:     true,
+		},
+		{
+			name:        "object with future unknown version is rejected",
+			content:     `{"version": 99, "platforms": []}`,
+			shouldExist: true,
+			wantNil:     true,
+		},
+		{
+			name:        "v1 object missing platforms key is rejected",
+			content:     `{"version": 1}`,
+			shouldExist: true,
+			wantNil:     true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -530,6 +548,32 @@ func TestCanSkipBuild(t *testing.T) {
 			},
 			wantSkip: true,
 		},
+		{
+			name: "failed entry followed by successful matching entry",
+			manifestData: Manifest{
+				{
+					GodotVersion:       "4.3.0",
+					Platform:           "windows",
+					ToolVersion:        "0.1.0",
+					Success:            false,
+					ToolchainChecksums: map[string]string{"python": "abc123"},
+				},
+				{
+					GodotVersion:       "4.3.0",
+					Platform:           "windows",
+					ToolVersion:        "0.1.0",
+					Success:            true,
+					ToolchainChecksums: map[string]string{"python": "abc123"},
+				},
+			},
+			currentKey: &CacheKey{
+				GodotVersion:       "4.3.0",
+				Platform:           "windows",
+				ToolVersion:        "0.1.0",
+				ToolchainChecksums: map[string]string{"python": "abc123"},
+			},
+			wantSkip: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -541,8 +585,10 @@ func TestCanSkipBuild(t *testing.T) {
 
 			if tt.manifestData != nil {
 				mf := ManifestFile{Version: 1, Platforms: tt.manifestData}
-				data, _ := json.Marshal(mf)
-				_ = os.WriteFile(manifestPath, data, 0644)
+				data, marshalErr := json.Marshal(mf)
+				assert.NoError(t, marshalErr, "should marshal test manifest")
+				writeErr := os.WriteFile(manifestPath, data, 0644)
+				assert.NoError(t, writeErr, "should write test manifest")
 			}
 
 			// WHEN checking if build can be skipped

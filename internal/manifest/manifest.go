@@ -40,9 +40,12 @@ func (l *Loader) Read() Manifest {
 // prior schema version to the current v1 schema.
 //
 // Schema detection order:
-//  1. v1 — JSON object with a "version" field ≥ 1: parse directly.
+//  1. v1 — JSON object with "version" == 1: parse directly.
 //  2. v0 array — JSON array: wrap entries into v1.
-//  3. v0 single-object — JSON object without "version": wrap the single entry.
+//  3. v0 single-object — JSON object with no "version" key: wrap the single entry.
+//
+// An object with an unrecognised "version" (e.g. a future v2 on an older binary)
+// is rejected and returns nil rather than silently producing bad data.
 //
 // Returns nil if the data cannot be parsed at all.
 func migrate(data []byte) Manifest {
@@ -51,18 +54,40 @@ func migrate(data []byte) Manifest {
 		return nil
 	}
 
-	// v1: JSON object with explicit "version" field.
+	// JSON object: inspect the "version" key to distinguish v0-object from v1+.
 	if data[0] == '{' {
 		var probe struct {
-			Version int `json:"version"`
+			// Version is a pointer so we can detect its absence (nil = not present).
+			Version   *int              `json:"version"`
+			Platforms []json.RawMessage `json:"platforms"`
 		}
-		if json.Unmarshal(data, &probe) == nil && probe.Version >= 1 {
+		if json.Unmarshal(data, &probe) != nil {
+			return nil
+		}
+
+		if probe.Version != nil {
+			// Version key is present: this is v1 or newer.
+			if *probe.Version != schemaVersion {
+				// Unknown future version — fail safe rather than silently mangle.
+				return nil
+			}
+			if probe.Platforms == nil {
+				// v1 must have a "platforms" array.
+				return nil
+			}
 			var mf ManifestFile
 			if err := json.Unmarshal(data, &mf); err != nil {
 				return nil
 			}
 			return mf.Platforms
 		}
+
+		// No "version" key: treat as a v0 single ManifestEntry.
+		var single ManifestEntry
+		if err := json.Unmarshal(data, &single); err != nil {
+			return nil
+		}
+		return []ManifestEntry{single}
 	}
 
 	// v0 array: bare JSON array of entries.
@@ -72,15 +97,6 @@ func migrate(data []byte) Manifest {
 			return entries
 		}
 		return nil
-	}
-
-	// v0 single object: a single ManifestEntry without version wrapper.
-	if data[0] == '{' {
-		var single ManifestEntry
-		if err := json.Unmarshal(data, &single); err != nil {
-			return nil
-		}
-		return []ManifestEntry{single}
 	}
 
 	return nil
@@ -156,7 +172,8 @@ func (l *Loader) CanSkipBuild(currentKey *CacheKey) bool {
 			continue
 		}
 		if !e.Success {
-			return false
+			// Skip failed entries; a later entry for the same platform may be successful.
+			continue
 		}
 		entryKey := &CacheKey{
 			GodotVersion:       e.GodotVersion,
