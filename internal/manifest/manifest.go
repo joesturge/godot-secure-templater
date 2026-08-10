@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,36 +26,79 @@ func NewLoader(workspaceRoot string) *Loader {
 }
 
 // Read loads the manifest from disk. Returns nil if the file doesn't exist or is invalid.
-// Automatically migrates legacy single-object manifests to the array format.
+// Automatically migrates v0 manifests (bare array or single object) to the v1 schema.
 // Does not fail; caller decides how to handle a missing or corrupted manifest.
 func (l *Loader) Read() Manifest {
 	data, err := os.ReadFile(l.ManifestPath)
 	if err != nil {
 		return nil
 	}
-
-	// Try array format first (current schema).
-	var entries []ManifestEntry
-	if err := json.Unmarshal(data, &entries); err == nil {
-		return entries
-	}
-
-	// Fall back to legacy single-object format and wrap in an array.
-	var single ManifestEntry
-	if err := json.Unmarshal(data, &single); err != nil {
-		return nil
-	}
-	return []ManifestEntry{single}
+	return migrate(data)
 }
 
-// Write persists the manifest atomically (temp + rename).
+// migrate reads raw manifest JSON and returns the entries, migrating from any
+// prior schema version to the current v1 schema.
+//
+// Schema detection order:
+//  1. v1 — JSON object with a "version" field ≥ 1: parse directly.
+//  2. v0 array — JSON array: wrap entries into v1.
+//  3. v0 single-object — JSON object without "version": wrap the single entry.
+//
+// Returns nil if the data cannot be parsed at all.
+func migrate(data []byte) Manifest {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return nil
+	}
+
+	// v1: JSON object with explicit "version" field.
+	if data[0] == '{' {
+		var probe struct {
+			Version int `json:"version"`
+		}
+		if json.Unmarshal(data, &probe) == nil && probe.Version >= 1 {
+			var mf ManifestFile
+			if err := json.Unmarshal(data, &mf); err != nil {
+				return nil
+			}
+			return mf.Platforms
+		}
+	}
+
+	// v0 array: bare JSON array of entries.
+	if data[0] == '[' {
+		var entries []ManifestEntry
+		if err := json.Unmarshal(data, &entries); err == nil {
+			return entries
+		}
+		return nil
+	}
+
+	// v0 single object: a single ManifestEntry without version wrapper.
+	if data[0] == '{' {
+		var single ManifestEntry
+		if err := json.Unmarshal(data, &single); err != nil {
+			return nil
+		}
+		return []ManifestEntry{single}
+	}
+
+	return nil
+}
+
+// Write persists the manifest atomically (temp + rename) using the v1 schema.
 // Returns an error if write fails (e.g., permission denied).
 func (l *Loader) Write(m Manifest) error {
 	if m == nil {
 		return fmt.Errorf("manifest is nil")
 	}
 
-	data, err := json.MarshalIndent(m, "", "  ")
+	mf := ManifestFile{
+		Version:   schemaVersion,
+		Platforms: m,
+	}
+
+	data, err := json.MarshalIndent(mf, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}

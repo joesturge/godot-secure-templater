@@ -5,6 +5,20 @@ import (
 	"time"
 )
 
+// schemaVersion is the current manifest file format version.
+const schemaVersion = 1
+
+// ManifestFile is the versioned on-disk representation of manifest.json.
+// Version 1 introduced an explicit schema version and renamed the top-level
+// array to "platforms".
+type ManifestFile struct {
+	// Version identifies the manifest schema. The current version is 1.
+	Version int `json:"version"`
+
+	// Platforms holds one entry per target platform build.
+	Platforms []ManifestEntry `json:"platforms"`
+}
+
 // ManifestEntry records the inputs and outputs of a single successful build run
 // for one platform target. The manifest file stores an array of these entries.
 type ManifestEntry struct {
@@ -41,9 +55,8 @@ type ManifestEntry struct {
 	// Config corruption is caught at write time; manifest focuses on build inputs/outputs.
 }
 
-// Manifest is the full manifest file, which is an array of per-platform entries.
-// Each entry records one platform's build state independently, so multiple platforms
-// can be tracked in a single manifest.json without interfering with each other.
+// Manifest is the in-memory slice of per-platform build entries.
+// Callers work with this type; ManifestFile is only used for serialisation.
 type Manifest = []ManifestEntry
 
 // CacheKey represents the set of inputs that determine build cache validity for one

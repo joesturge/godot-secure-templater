@@ -22,7 +22,26 @@ func TestLoaderRead(t *testing.T) {
 		wantSuccess  bool
 	}{
 		{
-			name: "valid array manifest file",
+			name: "valid v1 manifest file",
+			content: `{
+	"version": 1,
+	"platforms": [{
+		"godot_version": "4.3.0",
+		"version_resolution_method": "explicit",
+		"platform": "windows",
+		"tool_version": "0.1.0",
+		"success": true,
+		"toolchain_checksums": {"python": "abc123"}
+	}]
+}`,
+			shouldExist:  true,
+			wantNil:      false,
+			wantGodot:    "4.3.0",
+			wantPlatform: "windows",
+			wantSuccess:  true,
+		},
+		{
+			name: "legacy v0 array manifest is migrated to v1",
 			content: `[{
 	"godot_version": "4.3.0",
 	"version_resolution_method": "explicit",
@@ -38,7 +57,7 @@ func TestLoaderRead(t *testing.T) {
 			wantSuccess:  true,
 		},
 		{
-			name: "legacy single-object manifest is migrated to array",
+			name: "legacy single-object manifest is migrated to v1",
 			content: `{
 	"godot_version": "4.3.0",
 	"version_resolution_method": "explicit",
@@ -136,6 +155,13 @@ func TestLoaderWrite(t *testing.T) {
 	assert.Equal(t, true, readBack[0].Success)
 	assert.Equal(t, "abc123", readBack[0].ToolchainChecksums["python"])
 
+	// AND the raw JSON should use the v1 schema
+	raw, _ := os.ReadFile(manifestPath)
+	var mf ManifestFile
+	assert.NoError(t, json.Unmarshal(raw, &mf), "written file should be valid ManifestFile")
+	assert.Equal(t, 1, mf.Version, "written manifest should carry version 1")
+	assert.Len(t, mf.Platforms, 1, "platforms array should have one entry")
+
 	// AND no temp file should be left behind
 	tmpPath := manifestPath + ".tmp"
 	_, tmpStatErr := os.Stat(tmpPath)
@@ -178,10 +204,11 @@ func TestLoaderAtomicWrite(t *testing.T) {
 	content, readErr := os.ReadFile(manifestPath)
 	assert.NoError(t, readErr)
 
-	// AND it should be valid JSON array
-	var m Manifest
+	// AND it should be valid v1 JSON object
+	var m ManifestFile
 	unmarshalErr := json.Unmarshal(content, &m)
 	assert.NoError(t, unmarshalErr)
+	assert.Equal(t, 1, m.Version, "written manifest should have version 1")
 
 	// AND no temp file should remain
 	tmpPath := manifestPath + ".tmp"
@@ -513,7 +540,8 @@ func TestCanSkipBuild(t *testing.T) {
 			loader := &Loader{ManifestPath: manifestPath}
 
 			if tt.manifestData != nil {
-				data, _ := json.Marshal(tt.manifestData)
+				mf := ManifestFile{Version: 1, Platforms: tt.manifestData}
+				data, _ := json.Marshal(mf)
 				_ = os.WriteFile(manifestPath, data, 0644)
 			}
 
