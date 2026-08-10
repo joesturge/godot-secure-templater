@@ -18,5 +18,6 @@ Key repo conventions (short):
 - No unsafe INI round-trips: `internal/config` must perform byte-preserving, targeted edits only.
 - Crypto: AES-256 keys via `crypto/rand`, owner-only perms, atomic writes; never print raw keys in logs.
 - Toolchain: pinned dependencies in code; manifest-based caching (`manifest.json`) is the CI cache key.
+- Self-contained builds: verify and compile paths must not assume host compilers are preinstalled. On Windows host paths, SCons must use provisioned Zig compiler environment (`CC=zig cc`, `CXX=zig c++`, `AR=zig ar`) and must not rely on `MINGW_PREFIX` being present on the host.
 
 If you need to change a specific rule, add or edit the corresponding file in `.github/instructions/`.

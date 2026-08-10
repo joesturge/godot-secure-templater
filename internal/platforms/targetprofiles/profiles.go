@@ -42,7 +42,7 @@ func SConsHostTargetProfiles() []SConsTargetProfile {
 			PresetLabel:    "Windows",
 			ReleaseSetting: ".gst/templates/windows_template_release.exe",
 			DebugSetting:   ".gst/templates/windows_template_debug.exe",
-			ExtraSConsArgs: []string{"d3d12=no"},
+			ExtraSConsArgs: []string{"d3d12=no", "use_llvm=yes", "use_mingw=no"},
 		},
 		{
 			TargetTuple:    "linux/amd64",
