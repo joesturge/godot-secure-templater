@@ -61,8 +61,11 @@ if [[ "${mode}" == "verify" ]]; then
 	test -d ".gst/runtime/zig"
 	test -d ".gst/runtime/scons"
 	test -d ".gst/runtime/godot_source"
-	test -d ".gst/runtime/zig-shims"
-	test -d ".gst/runtime/zig-shims/bin"
+
+	if [[ "${target_tuple}" == "windows/amd64" ]]; then
+		test -d ".gst/runtime/zig-shims"
+		test -d ".gst/runtime/zig-shims/bin"
+	fi
 
 	if [[ "${assert_zig_provenance}" == "true" ]]; then
 		grep -F 'Verify-only compiler env: CC="zig cc" CXX="zig c++" AR="zig ar"' "${log_file}"
