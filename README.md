@@ -38,6 +38,7 @@ Use one shared project key, distributed securely via your secret manager or CI.
 
 ### 🔄 Smart Rebuilds
 - Caches build fingerprint (version, checksums, platform)
+- Stores that cache in a versioned `manifest.json` schema with one entry per target platform
 - Skips rebuild when inputs haven't changed
 - Force rebuild with `--force-rebuild` if needed
 
@@ -140,6 +141,12 @@ Your build uses the custom templates and encryption key you configured.
 
 Use `gst clean` to remove the generated `.gst/` workspace, including runtime tools, compiled templates, and key material.
 
+### 5. Understand the build manifest
+
+`gst` writes `.gst/manifest.json` after a successful build. The file uses a versioned schema so future upgrades can evolve safely, and it keeps separate cache entries per target platform.
+
+You normally do not need to edit it by hand. If an older project already has a legacy manifest, `gst` upgrades it transparently when it reads it.
+
 ---
 
 ## What Gets Created
@@ -152,7 +159,7 @@ my-game/
 │   ├── runtime/                   # Toolchain (Python, MinGW, SCons, Godot source)
 │   ├── templates/                 # Compiled export templates (windows_release.exe, etc.)
 │   ├── encryption.key             # Project encryption key (owner-read-only)
-│   └── manifest.json              # Build metadata for caching
+│   └── manifest.json              # Versioned build metadata for per-platform caching
 ├── export_presets.cfg             # Export settings (you configure template paths)
 └── project.godot                  # Your project (unchanged)
 ```
