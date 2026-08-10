@@ -5,12 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
+
+var errInvalidManifest = errors.New("invalid manifest")
 
 // Loader handles reading and writing manifest files.
 type Loader struct {
@@ -29,9 +33,20 @@ func NewLoader(workspaceRoot string) *Loader {
 // Automatically migrates v0 manifests (bare array or single object) to the v1 schema.
 // Does not fail; caller decides how to handle a missing or corrupted manifest.
 func (l *Loader) Read() Manifest {
-	data, err := os.ReadFile(l.ManifestPath)
+	entries, err := l.readEntries()
 	if err != nil {
 		return nil
+	}
+	return entries
+}
+
+func (l *Loader) readEntries() (Manifest, error) {
+	data, err := os.ReadFile(l.ManifestPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	return migrate(data)
 }
@@ -48,58 +63,68 @@ func (l *Loader) Read() Manifest {
 // is rejected and returns nil rather than silently producing bad data.
 //
 // Returns nil if the data cannot be parsed at all.
-func migrate(data []byte) Manifest {
+func migrate(data []byte) (Manifest, error) {
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 {
-		return nil
+		return nil, errInvalidManifest
 	}
 
 	// JSON object: inspect the "version" key to distinguish v0-object from v1+.
 	if data[0] == '{' {
-		var probe struct {
-			// Version is a pointer so we can detect its absence (nil = not present).
-			Version   *int              `json:"version"`
-			Platforms []json.RawMessage `json:"platforms"`
-		}
-		if json.Unmarshal(data, &probe) != nil {
-			return nil
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(data, &probe); err != nil {
+			return nil, errInvalidManifest
 		}
 
-		if probe.Version != nil {
+		if rawVersion, ok := probe["version"]; ok {
 			// Version key is present: this is v1 or newer.
-			if *probe.Version != schemaVersion {
+			if bytes.Equal(bytes.TrimSpace(rawVersion), []byte("null")) {
+				return nil, errInvalidManifest
+			}
+
+			var version int
+			if err := json.Unmarshal(rawVersion, &version); err != nil {
+				return nil, errInvalidManifest
+			}
+			if version != schemaVersion {
 				// Unknown future version — fail safe rather than silently mangle.
-				return nil
+				return nil, errInvalidManifest
 			}
-			if probe.Platforms == nil {
+
+			rawPlatforms, ok := probe["platforms"]
+			if !ok || bytes.Equal(bytes.TrimSpace(rawPlatforms), []byte("null")) {
 				// v1 must have a "platforms" array.
-				return nil
+				return nil, errInvalidManifest
 			}
+
 			var mf ManifestFile
 			if err := json.Unmarshal(data, &mf); err != nil {
-				return nil
+				return nil, errInvalidManifest
 			}
-			return mf.Platforms
+			return mf.Platforms, nil
 		}
 
 		// No "version" key: treat as a v0 single ManifestEntry.
 		var single ManifestEntry
 		if err := json.Unmarshal(data, &single); err != nil {
-			return nil
+			return nil, errInvalidManifest
 		}
-		return []ManifestEntry{single}
+		if strings.TrimSpace(single.Platform) == "" {
+			return nil, errInvalidManifest
+		}
+		return []ManifestEntry{single}, nil
 	}
 
 	// v0 array: bare JSON array of entries.
 	if data[0] == '[' {
 		var entries []ManifestEntry
 		if err := json.Unmarshal(data, &entries); err == nil {
-			return entries
+			return entries, nil
 		}
-		return nil
+		return nil, errInvalidManifest
 	}
 
-	return nil
+	return nil, errInvalidManifest
 }
 
 // Write persists the manifest atomically (temp + rename) using the v1 schema.
@@ -138,7 +163,10 @@ func (l *Loader) Write(m Manifest) error {
 // If an entry for the platform already exists it is replaced; otherwise a new entry
 // is appended. The updated manifest is then written atomically.
 func (l *Loader) UpsertEntry(entry ManifestEntry) error {
-	entries := l.Read()
+	entries, err := l.readEntries()
+	if err != nil {
+		return err
+	}
 	if entries == nil {
 		entries = []ManifestEntry{}
 	}
@@ -162,8 +190,8 @@ func (l *Loader) UpsertEntry(entry ManifestEntry) error {
 // already exists in the manifest and was successful. Returns true if rebuild can
 // be skipped.
 func (l *Loader) CanSkipBuild(currentKey *CacheKey) bool {
-	entries := l.Read()
-	if entries == nil {
+	entries, err := l.readEntries()
+	if err != nil || entries == nil {
 		return false
 	}
 
@@ -181,7 +209,9 @@ func (l *Loader) CanSkipBuild(currentKey *CacheKey) bool {
 			ToolchainChecksums: e.ToolchainChecksums,
 			ToolVersion:        e.ToolVersion,
 		}
-		return currentKey.Equals(entryKey)
+		if currentKey.Equals(entryKey) {
+			return true
+		}
 	}
 
 	return false

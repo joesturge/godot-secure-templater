@@ -96,8 +96,26 @@ func TestLoaderRead(t *testing.T) {
 			wantNil:     true,
 		},
 		{
+			name:        "object with null version is rejected",
+			content:     `{"version": null, "platforms": []}`,
+			shouldExist: true,
+			wantNil:     true,
+		},
+		{
 			name:        "v1 object missing platforms key is rejected",
 			content:     `{"version": 1}`,
+			shouldExist: true,
+			wantNil:     true,
+		},
+		{
+			name: "legacy single-object manifest missing platform is rejected",
+			content: `{
+	"godot_version": "4.3.0",
+	"version_resolution_method": "explicit",
+	"tool_version": "0.1.0",
+	"success": true,
+	"toolchain_checksums": {"python": "abc123"}
+}`,
 			shouldExist: true,
 			wantNil:     true,
 		},
@@ -124,9 +142,9 @@ func TestLoaderRead(t *testing.T) {
 			} else {
 				assert.NotNil(t, entries, "should return manifest entries")
 				assert.Len(t, entries, 1, "should have one entry")
-				assert.Equal(t, tt.wantGodot, entries[0].GodotVersion)
-				assert.Equal(t, tt.wantPlatform, entries[0].Platform)
-				assert.Equal(t, tt.wantSuccess, entries[0].Success)
+				assert.Equal(t, tt.wantGodot, entries[0].GodotVersion, "Godot version should match expected value")
+				assert.Equal(t, tt.wantPlatform, entries[0].Platform, "platform should match expected value")
+				assert.Equal(t, tt.wantSuccess, entries[0].Success, "success flag should match expected value")
 			}
 		})
 	}
@@ -158,7 +176,7 @@ func TestLoaderWrite(t *testing.T) {
 	err := loader.Write(entries)
 
 	// THEN no error should occur
-	assert.Nil(t, err, "Write should not error")
+	assert.NoError(t, err, "Write should not error")
 
 	// AND the file should exist
 	_, statErr := os.Stat(manifestPath)
@@ -166,15 +184,16 @@ func TestLoaderWrite(t *testing.T) {
 
 	// AND reading it back should restore the data
 	readBack := loader.Read()
-	assert.NotNil(t, readBack)
+	assert.NotNil(t, readBack, "read back manifest should not be nil")
 	assert.Len(t, readBack, 1, "should have one entry")
-	assert.Equal(t, "4.3.1", readBack[0].GodotVersion)
-	assert.Equal(t, "windows", readBack[0].Platform)
-	assert.Equal(t, true, readBack[0].Success)
-	assert.Equal(t, "abc123", readBack[0].ToolchainChecksums["python"])
+	assert.Equal(t, "4.3.1", readBack[0].GodotVersion, "Godot version should round-trip")
+	assert.Equal(t, "windows", readBack[0].Platform, "platform should round-trip")
+	assert.Equal(t, true, readBack[0].Success, "success flag should round-trip")
+	assert.Equal(t, "abc123", readBack[0].ToolchainChecksums["python"], "toolchain checksum should round-trip")
 
 	// AND the raw JSON should use the v1 schema
-	raw, _ := os.ReadFile(manifestPath)
+	raw, readErr := os.ReadFile(manifestPath)
+	assert.NoError(t, readErr, "should read written manifest file")
 	var mf ManifestFile
 	assert.NoError(t, json.Unmarshal(raw, &mf), "written file should be valid ManifestFile")
 	assert.Equal(t, 1, mf.Version, "written manifest should carry version 1")
@@ -216,16 +235,16 @@ func TestLoaderAtomicWrite(t *testing.T) {
 	err := loader.Write(entries)
 
 	// THEN no error should occur
-	assert.Nil(t, err)
+	assert.NoError(t, err, "atomic write should not error")
 
 	// AND the main file should exist
 	content, readErr := os.ReadFile(manifestPath)
-	assert.NoError(t, readErr)
+	assert.NoError(t, readErr, "written manifest should be readable")
 
 	// AND it should be valid v1 JSON object
 	var m ManifestFile
 	unmarshalErr := json.Unmarshal(content, &m)
-	assert.NoError(t, unmarshalErr)
+	assert.NoError(t, unmarshalErr, "written manifest should unmarshal as v1 schema")
 	assert.Equal(t, 1, m.Version, "written manifest should have version 1")
 
 	// AND no temp file should remain
@@ -244,7 +263,7 @@ func TestUpsertEntryNewPlatform(t *testing.T) {
 		{GodotVersion: "4.3.0", Platform: "windows", ToolVersion: "0.1.0", Success: true},
 	}
 	err := loader.Write(initial)
-	assert.Nil(t, err, "initial write should not error")
+	assert.NoError(t, err, "initial write should not error")
 
 	// WHEN upserting a new web entry
 	webEntry := ManifestEntry{
@@ -280,7 +299,7 @@ func TestUpsertEntryReplacesPlatform(t *testing.T) {
 		{GodotVersion: "4.3.0", Platform: "windows", ToolVersion: "0.1.0", Success: false},
 	}
 	err := loader.Write(initial)
-	assert.Nil(t, err, "initial write should not error")
+	assert.NoError(t, err, "initial write should not error")
 
 	// WHEN upserting a new windows entry with Success=true
 	updated := ManifestEntry{
@@ -317,7 +336,28 @@ func TestUpsertEntryCreatesManifestFromScratch(t *testing.T) {
 	// AND the manifest should contain the entry
 	readBack := loader.Read()
 	assert.Len(t, readBack, 1, "should have one entry")
-	assert.Equal(t, "windows", readBack[0].Platform)
+	assert.Equal(t, "windows", readBack[0].Platform, "platform should be written for new manifest")
+}
+
+func TestUpsertEntryRejectsInvalidManifest(t *testing.T) {
+	// GIVEN an invalid manifest file already exists
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "manifest.json")
+	writeErr := os.WriteFile(manifestPath, []byte(`{"version":null,"platforms":[]}`), 0644)
+	assert.NoError(t, writeErr, "should write invalid manifest fixture")
+	loader := &Loader{ManifestPath: manifestPath}
+
+	// WHEN upserting an entry
+	entry := ManifestEntry{GodotVersion: "4.3.0", Platform: "windows", Success: true}
+	err := loader.UpsertEntry(entry)
+
+	// THEN the invalid manifest should be rejected
+	assert.Error(t, err, "UpsertEntry should reject invalid existing manifests")
+
+	// AND the invalid file contents should be preserved
+	raw, readErr := os.ReadFile(manifestPath)
+	assert.NoError(t, readErr, "should still be able to read original manifest file")
+	assert.Equal(t, `{"version":null,"platforms":[]}`, string(raw), "invalid manifest contents should remain unchanged")
 }
 
 func TestCacheKeyEquals(t *testing.T) {
@@ -574,6 +614,32 @@ func TestCanSkipBuild(t *testing.T) {
 			},
 			wantSkip: true,
 		},
+		{
+			name: "successful mismatched entry followed by successful matching entry",
+			manifestData: Manifest{
+				{
+					GodotVersion:       "4.3.1",
+					Platform:           "windows",
+					ToolVersion:        "0.1.0",
+					Success:            true,
+					ToolchainChecksums: map[string]string{"python": "different"},
+				},
+				{
+					GodotVersion:       "4.3.0",
+					Platform:           "windows",
+					ToolVersion:        "0.1.0",
+					Success:            true,
+					ToolchainChecksums: map[string]string{"python": "abc123"},
+				},
+			},
+			currentKey: &CacheKey{
+				GodotVersion:       "4.3.0",
+				Platform:           "windows",
+				ToolVersion:        "0.1.0",
+				ToolchainChecksums: map[string]string{"python": "abc123"},
+			},
+			wantSkip: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -613,7 +679,7 @@ func TestComputeFileHash(t *testing.T) {
 	hash, hashErr := ComputeFileHash(filePath)
 
 	// THEN no error should occur
-	assert.Nil(t, hashErr, "ComputeFileHash should not error")
+	assert.NoError(t, hashErr, "ComputeFileHash should not error")
 
 	// AND the hash should be a valid SHA-256 hex string
 	assert.Len(t, hash, 64, "SHA-256 hash should be 64 hex chars")
@@ -656,12 +722,12 @@ func TestManifestTimestamp(t *testing.T) {
 
 	// WHEN writing and reading the manifest
 	err := loader.Write(entries)
-	assert.Nil(t, err)
+	assert.NoError(t, err, "timestamp manifest write should not error")
 
 	readBack := loader.Read()
 
 	// THEN the timestamp should be preserved
-	assert.NotNil(t, readBack)
+	assert.NotNil(t, readBack, "read back manifest should not be nil")
 	assert.Len(t, readBack, 1, "should have one entry")
 	// Compare only up to seconds since JSON serialization loses nanosecond precision
 	assert.True(t, readBack[0].Timestamp.Unix() == now.Unix(),
