@@ -66,8 +66,15 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	env := hostAdapter.BuildEnv(workspace, key)
 	shimRoot := filepath.Join(workspace.Runtime, "zig-shims")
 	shimBin := filepath.Join(shimRoot, "bin")
+	zigGlobalCache := filepath.Join(workspace.Runtime, "zig-cache", "global")
+	zigLocalCache := filepath.Join(workspace.Runtime, "zig-cache", "local")
+	zigTempDir := filepath.Join(workspace.Runtime, "zig-tmp")
 	env["PATH"] = prependWindowsPath(shimBin, env["PATH"])
 	env["MINGW_PREFIX"] = shimRoot
+	env["ZIG_GLOBAL_CACHE_DIR"] = zigGlobalCache
+	env["ZIG_LOCAL_CACHE_DIR"] = zigLocalCache
+	env["TEMP"] = zigTempDir
+	env["TMP"] = zigTempDir
 	// Zig-backed MinGW-compatible shims keep the build off external MinGW.
 	env["CC"] = "zig cc"
 	env["CXX"] = "zig c++"
@@ -89,6 +96,9 @@ func prependWindowsPath(entry string, existing string) string {
 func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 	shimRoot := filepath.Join(runtimeDir, "zig-shims")
 	shimBin := filepath.Join(shimRoot, "bin")
+	zigGlobalCache := filepath.Join(runtimeDir, "zig-cache", "global")
+	zigLocalCache := filepath.Join(runtimeDir, "zig-cache", "local")
+	zigTempDir := filepath.Join(runtimeDir, "zig-tmp")
 	zigExe, err := resolveBundledZigExecutable(runtimeDir)
 	if err != nil {
 		return &internal.Error{
@@ -104,6 +114,27 @@ func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 			Details: fmt.Sprintf("failed to create shim dir %s: %v", shimBin, err),
 		}
 	}
+	if err := os.MkdirAll(zigGlobalCache, 0o755); err != nil {
+		return &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: "Compile readiness check failed: zig shim setup",
+			Details: fmt.Sprintf("failed to create zig global cache dir %s: %v", zigGlobalCache, err),
+		}
+	}
+	if err := os.MkdirAll(zigLocalCache, 0o755); err != nil {
+		return &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: "Compile readiness check failed: zig shim setup",
+			Details: fmt.Sprintf("failed to create zig local cache dir %s: %v", zigLocalCache, err),
+		}
+	}
+	if err := os.MkdirAll(zigTempDir, 0o755); err != nil {
+		return &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: "Compile readiness check failed: zig shim setup",
+			Details: fmt.Sprintf("failed to create zig temp dir %s: %v", zigTempDir, err),
+		}
+	}
 
 	launcherExe := filepath.Join(shimBin, "zig-shim-launcher.exe")
 	launcherSrc := filepath.Join(shimRoot, "zig-shim-launcher.c")
@@ -116,6 +147,12 @@ func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 	}
 
 	compileLauncher := exec.Command(zigExe, "cc", "-target", "x86_64-windows-gnu", "-municode", launcherSrc, "-o", launcherExe)
+	compileLauncher.Env = append(os.Environ(),
+		fmt.Sprintf("ZIG_GLOBAL_CACHE_DIR=%s", zigGlobalCache),
+		fmt.Sprintf("ZIG_LOCAL_CACHE_DIR=%s", zigLocalCache),
+		fmt.Sprintf("TEMP=%s", zigTempDir),
+		fmt.Sprintf("TMP=%s", zigTempDir),
+	)
 	if output, err := compileLauncher.CombinedOutput(); err != nil {
 		return &internal.Error{
 			Code:    internal.ExitBuildFailed,
