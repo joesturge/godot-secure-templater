@@ -17,10 +17,10 @@ func TestBuildEnvUsesBundledZigCompiler(t *testing.T) {
 	// WHEN building environment overrides
 	env := buildEnv(workspace, "test-key")
 
-	// THEN Windows builds should use the bundled Zig compiler toolchain
-	assert.Equal(t, "zig cc", env["CC"], "Windows host build env should use zig cc as the C compiler")
-	assert.Equal(t, "zig c++", env["CXX"], "Windows host build env should use zig c++ as the C++ compiler")
-	assert.Equal(t, "zig ar", env["AR"], "Windows host build env should use zig ar as the archiver")
+	// THEN Windows builds should use the bundled Zig compiler toolchain via single-word shim wrappers
+	assert.Equal(t, "zig-cc", env["CC"], "Windows host build env should use zig-cc shim as the C compiler")
+	assert.Equal(t, "zig-cxx", env["CXX"], "Windows host build env should use zig-cxx shim as the C++ compiler")
+	assert.Equal(t, "zig-ar", env["AR"], "Windows host build env should use zig-ar shim as the archiver")
 	assert.Equal(t, filepath.Join(workspace.Runtime, "zig-shims"), env["MINGW_PREFIX"], "Windows host build env should set MINGW_PREFIX to the generated runtime shim root")
 	assert.Contains(t, env["PATH"], filepath.Join(workspace.Runtime, "zig-shims", "bin"), "Windows host build env should include shim bin path in PATH")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "Windows host build env should preserve the encryption key override")
@@ -46,6 +46,9 @@ func TestEnsureWindowsZigShimsCreatesRequiredCompilerWrappers(t *testing.T) {
 		filepath.Join(shimBin, "windres.cmd"),
 		filepath.Join(shimBin, "x86_64-w64-mingw32-clang.cmd"),
 		filepath.Join(shimBin, "x86_64-w64-mingw32-ar.cmd"),
+		filepath.Join(shimBin, "zig-cc.cmd"),
+		filepath.Join(shimBin, "zig-cxx.cmd"),
+		filepath.Join(shimBin, "zig-ar.cmd"),
 	}
 	for _, p := range checkPaths {
 		_, statErr := os.Stat(p)

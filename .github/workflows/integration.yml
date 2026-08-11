@@ -133,7 +133,7 @@ jobs:
           if (Test-Path ".gst/templates/windows_template_debug.exe") { throw "debug template should not exist in verify-only mode" }
 
           $log = Get-Content -Raw $logPath
-          if ($log -notmatch 'Verify-only compiler env: CC="zig cc" CXX="zig c\+\+" AR="zig ar"') {
+          if ($log -notmatch 'Verify-only compiler env: CC="zig-cc" CXX="zig-cxx" AR="zig-ar"') {
             throw "missing compiler provenance in verify log"
           }
           if ($log -notmatch 'Verify-only compiler env: .*MINGW_PREFIX=".+"') {

@@ -68,9 +68,9 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	shimBin := filepath.Join(shimRoot, "bin")
 	env["PATH"] = prependWindowsPath(shimBin, env["PATH"])
 	env["MINGW_PREFIX"] = shimRoot
-	env["CC"] = "zig cc"
-	env["CXX"] = "zig c++"
-	env["AR"] = "zig ar"
+	env["CC"] = "zig-cc"
+	env["CXX"] = "zig-cxx"
+	env["AR"] = "zig-ar"
 
 	return env
 }
@@ -109,6 +109,24 @@ func ensureWindowsZigShims(runtimeDir string, logger internal.Logger) *internal.
 					Message: "Compile readiness check failed: zig shim setup",
 					Details: fmt.Sprintf("failed to write shim %s: %v", filePath, writeErr),
 				}
+			}
+		}
+	}
+
+	// Single-word shims so SCons can spawn them directly on Windows (CC=zig-cc etc.)
+	singleWordShims := []struct{ name, subcommand string }{
+		{"zig-cc", "cc"},
+		{"zig-cxx", "c++"},
+		{"zig-ar", "ar"},
+	}
+	for _, s := range singleWordShims {
+		filePath := filepath.Join(shimBin, s.name+".cmd")
+		content := fmt.Sprintf("@echo off\r\nzig %s %%*\r\n", s.subcommand)
+		if writeErr := os.WriteFile(filePath, []byte(content), 0o644); writeErr != nil {
+			return &internal.Error{
+				Code:    internal.ExitBuildFailed,
+				Message: "Compile readiness check failed: zig shim setup",
+				Details: fmt.Sprintf("failed to write shim %s: %v", filePath, writeErr),
 			}
 		}
 	}
