@@ -68,7 +68,7 @@ if [[ "${mode}" == "verify" ]]; then
 	fi
 
 	if [[ "${assert_zig_provenance}" == "true" ]]; then
-		grep -F 'Verify-only compiler env: CC="zig cc" CXX="zig c++" AR="zig ar"' "${log_file}"
+		grep -E 'Verify-only compiler env: CC="(zig cc|clang)" CXX="(zig c\+\+|clang\+\+)" AR="(zig ar|ar)"' "${log_file}"
 		grep -E 'Verify-only compiler env: .*MINGW_PREFIX=".+"' "${log_file}"
 		grep -E 'Verify-only PATH head: .*zig-shims' "${log_file}"
 		grep -E 'Verify-only SCons args: .*use_llvm=yes.*use_mingw=no' "${log_file}"
