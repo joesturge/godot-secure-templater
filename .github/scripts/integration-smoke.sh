@@ -59,22 +59,26 @@ if [[ "${mode}" == "verify" ]]; then
 	gst_pid=$!
 	set -e
 
+	startup_signal_regex='scons: Building targets \.\.\.|Compiling .+ \.\.\.'
 	compile_progress_regex='Compiling .+ \.\.\.'
 	fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed|exit status [0-9]+'
 	required_compile_lines=25
 	compile_started="false"
 	startup_observed="false"
-	compile_deadline=$((SECONDS + 900))
+	compile_deadline=$((SECONDS + 300))
 	while kill -0 "${gst_pid}" 2>/dev/null; do
-		if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
-			echo "compile startup smoke detected a build error" >&2
-			kill -TERM "${gst_pid}" 2>/dev/null || true
-			wait "${gst_pid}" || true
-			exit 8
-		fi
+		if [[ "${compile_started}" != "true" ]]; then
+			if grep -Eq "${startup_signal_regex}" "${log_file}"; then
+				compile_started="true"
+			fi
+		else
+			if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+				echo "compile startup smoke detected a build error" >&2
+				kill -TERM "${gst_pid}" 2>/dev/null || true
+				wait "${gst_pid}" || true
+				exit 8
+			fi
 
-		if grep -Eq "${compile_progress_regex}" "${log_file}"; then
-			compile_started="true"
 			compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
 			if (( compile_line_count >= required_compile_lines )); then
 				startup_observed="true"
@@ -82,7 +86,7 @@ if [[ "${mode}" == "verify" ]]; then
 			fi
 		fi
 
-		if (( SECONDS >= compile_deadline )); then
+		if [[ "${compile_started}" != "true" ]] && (( SECONDS >= compile_deadline )); then
 			echo "timed out waiting for SCons compile start" >&2
 			kill -TERM "${gst_pid}" 2>/dev/null || true
 			wait "${gst_pid}" || true
