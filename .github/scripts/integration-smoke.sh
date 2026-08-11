@@ -131,7 +131,11 @@ fi
 
 if [[ "${mode}" == "verify" ]]; then
 	test -d ".gst/runtime/python"
-	test -d ".gst/runtime/zig"
+	if [[ "${target_tuple}" == "windows/amd64" ]]; then
+		test -d ".gst/runtime/mingw"
+	else
+		test -d ".gst/runtime/zig"
+	fi
 	test -d ".gst/runtime/scons"
 	test -d ".gst/runtime/godot_source"
 	test -f ".gst/encryption.key"

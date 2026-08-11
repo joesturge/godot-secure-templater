@@ -55,27 +55,16 @@ func TestPosixHostBuildEnv(t *testing.T) {
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "BuildEnv should include encryption key override")
 }
 
-func TestResolvePythonExecutableFallsBackToSystemPython(t *testing.T) {
-	// GIVEN no provisioned runtime python and a fake system python3 on PATH
+func TestResolvePythonExecutableFailsWithoutRuntimePython(t *testing.T) {
+	// GIVEN no provisioned runtime python
 	runtimeDir := t.TempDir()
-	binDir := t.TempDir()
-	pythonPath := filepath.Join(binDir, "python3")
-	err := os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
-	assert.NoError(t, err, "Fake python3 shim should be created")
-
-	oldPath := os.Getenv("PATH")
-	err = os.Setenv("PATH", binDir)
-	assert.NoError(t, err, "PATH should be overrideable for the test")
-	t.Cleanup(func() {
-		_ = os.Setenv("PATH", oldPath)
-	})
 
 	// WHEN resolving the python executable
 	resolved, err := resolvePythonExecutable(runtimeDir)
 
-	// THEN it should fall back to the system python3
-	assert.NoError(t, err, "resolvePythonExecutable should fall back to system python on POSIX hosts")
-	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return the python3 found on PATH")
+	// THEN it should fail fast instead of falling back to host binaries
+	assert.Error(t, err, "resolvePythonExecutable should fail when runtime python is missing")
+	assert.Equal(t, filepath.Join(runtimeDir, "python", "python"), resolved, "resolvePythonExecutable should return the expected runtime python path on POSIX hosts")
 }
 
 func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {

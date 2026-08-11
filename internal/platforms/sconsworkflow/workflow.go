@@ -110,20 +110,21 @@ func VerifyCompileReadinessWithEnv(ctx *internal.RunContext, hostTuple string, p
 	if pathValue, ok := envOverrides["PATH"]; ok {
 		ctx.Logger.Debug("Verify-only PATH head: %s", pathHead(pathValue, hostTuple))
 	}
-	zigExe, zigErr := resolveZigExecutable(ctx.Workspace.Runtime)
-	if zigErr != nil {
-		return &internal.Error{
-			Code:    internal.ExitBuildFailed,
-			Message: "Compile readiness check failed: zig version",
-			Details: zigErr.Error(),
-		}
-	}
-
 	if err := runProbe("python version", exec.Command(tools.PythonExe, "--version"), env, ""); err != nil {
 		return err
 	}
-	if err := runProbe("zig version", exec.Command(zigExe, "version"), env, ""); err != nil {
-		return err
+	if usesZigCompiler(envOverrides) {
+		zigExe, zigErr := resolveZigExecutable(ctx.Workspace.Runtime)
+		if zigErr != nil {
+			return &internal.Error{
+				Code:    internal.ExitBuildFailed,
+				Message: "Compile readiness check failed: zig version",
+				Details: zigErr.Error(),
+			}
+		}
+		if err := runProbe("zig version", exec.Command(zigExe, "version"), env, ""); err != nil {
+			return err
+		}
 	}
 
 	sconsVersion := BuildCommand(tools.PythonExe, tools.SConsExe, []string{"--version"}, ctx.Logger)
@@ -182,9 +183,6 @@ func (windowsHostAdapter) BuildEnv(workspace *internal.Workspace, key string) ma
 		}
 	}
 
-	if systemPath := os.Getenv("PATH"); systemPath != "" {
-		paths = append(paths, systemPath)
-	}
 	env["PATH"] = strings.Join(paths, ";")
 	env["PYTHONPATH"] = strings.Join([]string{filepath.Join(workspace.Runtime, "scons")}, ";")
 	env["SCRIPT_AES256_ENCRYPTION_KEY"] = key
@@ -278,14 +276,7 @@ func resolvePythonExecutable(runtimeDir string) (string, error) {
 		return pythonExe, nil
 	}
 
-	for _, candidate := range []string{"python3", "python"} {
-		if resolved, err := exec.LookPath(candidate); err == nil {
-			return resolved, nil
-		}
-	}
-
-	_, err := os.Stat(pythonExe)
-	return pythonExe, err
+	return pythonExe, fmt.Errorf("runtime python executable not found under %s", filepath.Join(runtimeDir, "python"))
 }
 
 func resolveZigExecutable(runtimeDir string) (string, error) {
@@ -310,10 +301,6 @@ func resolveZigExecutable(runtimeDir string) (string, error) {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
-	}
-
-	if resolved, err := exec.LookPath("zig"); err == nil {
-		return resolved, nil
 	}
 
 	return "", fmt.Errorf("zig executable not found under %s", zigBase)
@@ -364,6 +351,15 @@ func pathHead(pathValue string, hostTuple string) string {
 		parts = parts[:4]
 	}
 	return strings.Join(parts, separator)
+}
+
+func usesZigCompiler(env map[string]string) bool {
+	for _, key := range []string{"CC", "CXX", "AR"} {
+		if strings.Contains(strings.ToLower(env[key]), "zig") {
+			return true
+		}
+	}
+	return false
 }
 
 func runProbe(name string, cmd *exec.Cmd, env []string, dir string) *internal.Error {

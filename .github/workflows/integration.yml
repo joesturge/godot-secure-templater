@@ -41,7 +41,7 @@ jobs:
             expected_release: windows_template_release.exe
             expected_debug: windows_template_debug.exe
             sanitize_host_env: 'true'
-            assert_zig_provenance: 'true'
+            assert_zig_provenance: 'false'
             run_pwsh_smoke: 'true'
           - name: linux host -> linux target
             runner: ubuntu-latest
@@ -121,11 +121,9 @@ jobs:
           }
 
           if (-not (Test-Path ".gst/runtime/python")) { throw "missing runtime python" }
-          if (-not (Test-Path ".gst/runtime/zig")) { throw "missing runtime zig" }
+          if (-not (Test-Path ".gst/runtime/mingw")) { throw "missing runtime mingw" }
           if (-not (Test-Path ".gst/runtime/scons")) { throw "missing runtime scons" }
           if (-not (Test-Path ".gst/runtime/godot_source")) { throw "missing runtime godot_source" }
-          if (-not (Test-Path ".gst/runtime/zig-shims")) { throw "missing runtime zig-shims" }
-          if (-not (Test-Path ".gst/runtime/zig-shims/bin")) { throw "missing runtime zig-shims/bin" }
 
           if (Test-Path ".gst/manifest.json") { throw "manifest should not exist in verify-only mode" }
           if (Test-Path ".gst/encryption.key") { throw "encryption key should not exist in verify-only mode" }
@@ -133,7 +131,7 @@ jobs:
           if (Test-Path ".gst/templates/windows_template_debug.exe") { throw "debug template should not exist in verify-only mode" }
 
           $log = Get-Content -Raw $logPath
-          if ($log -notmatch 'Verify-only compiler env: CC="zig cc" CXX="zig c\+\+" AR="zig ar"') {
+          if ($log -notmatch 'Verify-only compiler env: CC="gcc" CXX="g\+\+" AR="ar"') {
             throw "missing compiler provenance in verify log"
           }
           if ($log -notmatch 'Verify-only SCons args: .*use_llvm=yes.*use_mingw=yes') {
