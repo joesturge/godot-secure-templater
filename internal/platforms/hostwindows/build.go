@@ -147,7 +147,6 @@ func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 					Details: fmt.Sprintf("failed to write shim %s: %v", filePath, err),
 				}
 			}
-			_ = subcommand
 		}
 	}
 
