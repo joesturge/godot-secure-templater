@@ -13,6 +13,8 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
 )
 
+const mingwToolPrefix = "x86_64-w64-mingw32-"
+
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 		if err := ensureWindowsZigShims(ctx.Workspace.Runtime, ctx.Logger); err != nil {
@@ -67,7 +69,7 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	shimRoot := filepath.Join(workspace.Runtime, "zig-shims")
 	shimBin := filepath.Join(shimRoot, "bin")
 	env["PATH"] = prependWindowsPath(shimBin, env["PATH"])
-	env["MINGW_PREFIX"] = "x86_64-w64-mingw32-"
+	env["MINGW_PREFIX"] = mingwToolPrefix
 	env["CC"] = "zig cc"
 	env["CXX"] = "zig c++"
 	env["AR"] = "zig ar"
