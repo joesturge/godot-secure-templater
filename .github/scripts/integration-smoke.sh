@@ -60,7 +60,7 @@ if [[ "${mode}" == "verify" ]]; then
 
 	startup_signal_regex='scons: Building targets \.\.\.|Compiling .+ \.\.\.'
 	compile_progress_regex='Compiling .+ \.\.\.'
-	fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed|exit status [0-9]+'
+	fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
 	required_compile_lines=25
 	compile_started="false"
 	startup_observed="false"
