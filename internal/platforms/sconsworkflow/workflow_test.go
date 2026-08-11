@@ -110,6 +110,26 @@ func TestResolvePythonExecutable_NestedSubdirLayout(t *testing.T) {
 	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/python/bin/python3 for nested layout")
 }
 
+func TestResolvePythonExecutable_BinLayoutVersionedOnly(t *testing.T) {
+	// GIVEN a python-build-standalone layout where symlinks were not extracted
+	// and only the versioned binary (e.g. python3.11) exists in bin/
+	runtimeDir := t.TempDir()
+	binDir := filepath.Join(runtimeDir, "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/bin directory should be creatable")
+
+	pythonPath := filepath.Join(binDir, "python3.11")
+	err = os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "python/bin/python3.11 executable should be creatable")
+
+	// WHEN resolving the python executable
+	resolved, err := resolvePythonExecutable(runtimeDir)
+
+	// THEN it should find the versioned binary even without symlinks
+	assert.NoError(t, err, "resolvePythonExecutable should succeed when only python3.11 is present")
+	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/bin/python3.11 when symlinks are absent")
+}
+
 func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {
 	// GIVEN a runtime directory with zig at the runtime root layout
 	runtimeDir := t.TempDir()

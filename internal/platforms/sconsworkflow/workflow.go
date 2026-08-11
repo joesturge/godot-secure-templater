@@ -291,6 +291,22 @@ func resolvePythonExecutable(runtimeDir string) (string, error) {
 			return candidate, nil
 		}
 	}
+	// Fallback: glob for versioned python3.* binaries (e.g. python3.11) in known bin
+	// directories. python-build-standalone archives ship symlinks (python → python3.11)
+	// that are intentionally not materialised during extraction, so the versioned binary
+	// may be the only executable present.
+	for _, binDir := range []string{
+		filepath.Join(runtimeDir, "python", "bin"),
+		filepath.Join(runtimeDir, "python", "python", "bin"),
+	} {
+		matches, _ := filepath.Glob(filepath.Join(binDir, "python3*"))
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err == nil && !info.IsDir() {
+				return match, nil
+			}
+		}
+	}
 	return filepath.Join(runtimeDir, "python", "python"), fmt.Errorf("runtime python executable not found under %s", filepath.Join(runtimeDir, "python"))
 }
 

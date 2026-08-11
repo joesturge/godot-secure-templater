@@ -203,6 +203,39 @@ func TestDownloadFile_NotFound(t *testing.T) {
 	assert.Error(t, err, "Should error on invalid/unreachable URL")
 }
 
+func TestInstallSconsToEmbeddedPython_VersionedPythonOnly(t *testing.T) {
+	// GIVEN a workspace where only the versioned python3.11 binary exists (symlinks absent)
+	tempDir := t.TempDir()
+
+	binDir := filepath.Join(tempDir, "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/bin directory should be creatable")
+
+	pythonExe := filepath.Join(binDir, "python3.11")
+	err = os.WriteFile(pythonExe, []byte("fake python"), 0755)
+	assert.NoError(t, err, "Failed to create python3.11 executable")
+
+	sconsDir := filepath.Join(tempDir, "scons")
+	err = os.Mkdir(sconsDir, 0755)
+	assert.NoError(t, err, "Failed to create scons directory")
+
+	ctx := &internal.RunContext{
+		Workspace: &internal.Workspace{
+			Runtime: tempDir,
+		},
+		Logger: internal.NewSimpleLogger(false),
+	}
+
+	// WHEN calling installSconsToEmbeddedPython with only python3.11 present
+	installErr := installSconsToEmbeddedPython(ctx, sconsDir)
+
+	// THEN it should not fail due to missing python (it may fail on setup.py absence)
+	// but must NOT fail with "no python executable found"
+	if installErr != nil {
+		assert.NotContains(t, installErr.Details, "no python executable found", "installSconsToEmbeddedPython should find python3.11 even without symlinks")
+	}
+}
+
 func TestInstallSconsToEmbeddedPython_DirectoryNotFound(t *testing.T) {
 	// GIVEN a RunContext with workspace setup but SCons directory not found
 	tempDir := t.TempDir()

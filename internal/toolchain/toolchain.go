@@ -496,6 +496,18 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 			break
 		}
 	}
+	// Fallback: glob for versioned python3.* binaries (e.g. python3.11) in bin/.
+	// python-build-standalone symlinks (python → python3.11) are not materialised during
+	// extraction, so the versioned binary may be the only executable present.
+	if pythonExe == "" {
+		matches, _ := filepath.Glob(filepath.Join(ctx.Workspace.Runtime, "python", "bin", "python3*"))
+		for _, match := range matches {
+			if info, err := os.Stat(match); err == nil && !info.IsDir() {
+				pythonExe = match
+				break
+			}
+		}
+	}
 
 	// Verify python exists
 	if pythonExe == "" {
