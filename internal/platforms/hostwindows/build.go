@@ -110,6 +110,23 @@ func ensureWindowsZigShims(runtimeDir string, logger internal.Logger) *internal.
 					Details: fmt.Sprintf("failed to write shim %s: %v", filePath, writeErr),
 				}
 			}
+
+			zigCommandShims := map[string]string{
+				"zig cc":  "cc",
+				"zig c++": "c++",
+				"zig ar":  "ar",
+			}
+			for name, subcommand := range zigCommandShims {
+				filePath := filepath.Join(shimBin, name+".cmd")
+				content := fmt.Sprintf("@echo off\r\nzig %s %%*\r\n", subcommand)
+				if writeErr := os.WriteFile(filePath, []byte(content), 0o644); writeErr != nil {
+					return &internal.Error{
+						Code:    internal.ExitBuildFailed,
+						Message: "Compile readiness check failed: zig shim setup",
+						Details: fmt.Sprintf("failed to write shim %s: %v", filePath, writeErr),
+					}
+				}
+			}
 		}
 	}
 
