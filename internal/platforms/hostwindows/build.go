@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
@@ -54,22 +55,26 @@ func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SCo
 func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	hostAdapter := sconsworkflow.WindowsHostAdapter()
 	env := hostAdapter.BuildEnv(workspace, key)
-	// Windows builds use Zig directly and do not depend on MinGW wrappers.
-	env["CC"] = "zig cc -target x86_64-windows-msvc"
-	env["CXX"] = "zig c++ -target x86_64-windows-msvc"
-	env["AR"] = "zig ar"
-	// Strip host Visual Studio/Windows SDK toolchain variables so zig does not
-	// inherit MSVC headers or libs from the runner.
-	env["CL"] = ""
-	env["INCLUDE"] = ""
-	env["LIB"] = ""
-	env["LIBPATH"] = ""
-	env["VCINSTALLDIR"] = ""
-	env["VCToolsInstallDir"] = ""
-	env["WindowsSdkDir"] = ""
-	env["UniversalCRTSdkDir"] = ""
+	shimRoot := filepath.Join(workspace.Runtime, "zig-shims")
+	shimBin := filepath.Join(shimRoot, "bin")
+	env["PATH"] = prependWindowsPath(shimBin, env["PATH"])
+	env["MINGW_PREFIX"] = shimRoot
+	// Zig-backed MinGW-compatible shims keep the build off external MinGW.
+	env["CC"] = "clang"
+	env["CXX"] = "clang++"
+	env["AR"] = "ar"
 
 	return env
+}
+
+func prependWindowsPath(entry string, existing string) string {
+	if existing == "" {
+		return entry
+	}
+	if strings.HasPrefix(existing, entry+";") || existing == entry {
+		return existing
+	}
+	return entry + ";" + existing
 }
 
 func makeEnv(overrides map[string]string) []string {
@@ -82,9 +87,6 @@ func makeEnv(overrides map[string]string) []string {
 		}
 	}
 	for k, v := range overrides {
-		if v == "" {
-			continue
-		}
 		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
 	}
 	return filtered

@@ -17,18 +17,10 @@ func TestBuildEnvUsesBundledZigCompiler(t *testing.T) {
 	env := buildEnv(workspace, "test-key")
 
 	// THEN Windows builds should invoke Zig directly and stay off MinGW wrappers
-	assert.Equal(t, "zig cc -target x86_64-windows-msvc", env["CC"], "Windows host build env should use zig cc with an explicit Windows MSVC target")
-	assert.Equal(t, "zig c++ -target x86_64-windows-msvc", env["CXX"], "Windows host build env should use zig c++ with an explicit Windows MSVC target")
-	assert.Equal(t, "zig ar", env["AR"], "Windows host build env should use zig ar as the archiver")
-	assert.Equal(t, "", env["CL"], "Windows host build env should clear CL from the host environment")
-	assert.Equal(t, "", env["INCLUDE"], "Windows host build env should clear INCLUDE from the host environment")
-	assert.Equal(t, "", env["LIB"], "Windows host build env should clear LIB from the host environment")
-	assert.Equal(t, "", env["LIBPATH"], "Windows host build env should clear LIBPATH from the host environment")
-	assert.Equal(t, "", env["VCINSTALLDIR"], "Windows host build env should clear VCINSTALLDIR from the host environment")
-	assert.Equal(t, "", env["VCToolsInstallDir"], "Windows host build env should clear VCToolsInstallDir from the host environment")
-	assert.Equal(t, "", env["WindowsSdkDir"], "Windows host build env should clear WindowsSdkDir from the host environment")
-	assert.Equal(t, "", env["UniversalCRTSdkDir"], "Windows host build env should clear UniversalCRTSdkDir from the host environment")
-	assert.NotContains(t, env, "MINGW_PREFIX", "Windows host build env should not set MINGW_PREFIX")
+	assert.Equal(t, "clang", env["CC"], "Windows host build env should use the Zig-backed clang shim as the C compiler")
+	assert.Equal(t, "clang++", env["CXX"], "Windows host build env should use the Zig-backed clang++ shim as the C++ compiler")
+	assert.Equal(t, "ar", env["AR"], "Windows host build env should use the Zig-backed ar shim as the archiver")
+	assert.Equal(t, filepath.Join(workspace.Runtime, "zig-shims"), env["MINGW_PREFIX"], "Windows host build env should point MINGW_PREFIX at the Zig shim root")
 	assert.Contains(t, env["PATH"], filepath.Join(workspace.Runtime, "zig"), "Windows host build env should include the bundled Zig bin path")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "Windows host build env should preserve the encryption key override")
 }
