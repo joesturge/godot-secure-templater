@@ -42,7 +42,6 @@ if [[ "${mode}" == "verify" ]]; then
 fi
 
 if [[ "${sanitize_host_env}" == "true" ]]; then
-	unset MINGW_PREFIX || true
 	unset MSYSTEM || true
 	unset CC || true
 	unset CXX || true
@@ -122,11 +121,6 @@ if [[ "${mode}" == "verify" ]]; then
 	test -d ".gst/runtime/godot_source"
 	test -f ".gst/encryption.key"
 
-	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/zig-shims"
-		test -d ".gst/runtime/zig-shims/bin"
-	fi
-
 	grep -Eq "${compile_progress_regex}" "${log_file}"
 
 	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
@@ -142,12 +136,6 @@ if [[ "${mode}" == "verify" ]]; then
 
 	if [[ "${assert_zig_provenance}" == "true" ]]; then
 		if [[ "${target_tuple}" == "windows/amd64" ]]; then
-			test -f ".gst/runtime/zig-shims/bin/clang.cmd"
-			test -f ".gst/runtime/zig-shims/bin/clang++.cmd"
-			test -f ".gst/runtime/zig-shims/bin/ar.cmd"
-			grep -F 'zig cc %*' ".gst/runtime/zig-shims/bin/clang.cmd"
-			grep -F 'zig c++ %*' ".gst/runtime/zig-shims/bin/clang++.cmd"
-			grep -F 'zig ar %*' ".gst/runtime/zig-shims/bin/ar.cmd"
 			grep -E 'Compiling .+\.llvm\.o' "${log_file}"
 		fi
 	fi

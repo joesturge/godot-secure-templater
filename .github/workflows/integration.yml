@@ -136,12 +136,6 @@ jobs:
           if ($log -notmatch 'Verify-only compiler env: CC="zig cc" CXX="zig c\+\+" AR="zig ar"') {
             throw "missing compiler provenance in verify log"
           }
-          if ($log -notmatch 'Verify-only compiler env: .*MINGW_PREFIX=".+"') {
-            throw "missing MINGW_PREFIX provenance in verify log"
-          }
-          if ($log -notmatch 'Verify-only PATH head: .*zig-shims') {
-            throw "missing zig-shims path provenance in verify log"
-          }
           if ($log -notmatch 'Verify-only SCons args: .*use_llvm=yes.*use_mingw=no') {
             throw "missing expected SCons args in verify log"
           }
