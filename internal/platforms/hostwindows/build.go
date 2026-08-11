@@ -55,8 +55,8 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	hostAdapter := sconsworkflow.WindowsHostAdapter()
 	env := hostAdapter.BuildEnv(workspace, key)
 	// Windows builds use Zig directly and do not depend on MinGW wrappers.
-	env["CC"] = "zig cc"
-	env["CXX"] = "zig c++"
+	env["CC"] = "zig cc -target x86_64-windows-msvc"
+	env["CXX"] = "zig c++ -target x86_64-windows-msvc"
 	env["AR"] = "zig ar"
 	// Strip host Visual Studio/Windows SDK toolchain variables so zig does not
 	// inherit MSVC headers or libs from the runner.

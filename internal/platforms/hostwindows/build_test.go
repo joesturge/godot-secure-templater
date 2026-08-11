@@ -17,8 +17,8 @@ func TestBuildEnvUsesBundledZigCompiler(t *testing.T) {
 	env := buildEnv(workspace, "test-key")
 
 	// THEN Windows builds should invoke Zig directly and stay off MinGW wrappers
-	assert.Equal(t, "zig cc", env["CC"], "Windows host build env should use zig cc as the C compiler")
-	assert.Equal(t, "zig c++", env["CXX"], "Windows host build env should use zig c++ as the C++ compiler")
+	assert.Equal(t, "zig cc -target x86_64-windows-msvc", env["CC"], "Windows host build env should use zig cc with an explicit Windows MSVC target")
+	assert.Equal(t, "zig c++ -target x86_64-windows-msvc", env["CXX"], "Windows host build env should use zig c++ with an explicit Windows MSVC target")
 	assert.Equal(t, "zig ar", env["AR"], "Windows host build env should use zig ar as the archiver")
 	assert.Equal(t, "", env["CL"], "Windows host build env should clear CL from the host environment")
 	assert.Equal(t, "", env["INCLUDE"], "Windows host build env should clear INCLUDE from the host environment")
