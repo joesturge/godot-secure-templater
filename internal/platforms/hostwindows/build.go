@@ -67,7 +67,7 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	shimRoot := filepath.Join(workspace.Runtime, "zig-shims")
 	shimBin := filepath.Join(shimRoot, "bin")
 	env["PATH"] = prependWindowsPath(shimBin, env["PATH"])
-	env["MINGW_PREFIX"] = shimRoot
+	env["MINGW_PREFIX"] = "x86_64-w64-mingw32-"
 	env["CC"] = "zig cc"
 	env["CXX"] = "zig c++"
 	env["AR"] = "zig ar"
