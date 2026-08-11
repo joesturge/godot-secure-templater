@@ -418,3 +418,37 @@ func TestEnsureSufficientDiskSpace(t *testing.T) {
 		})
 	}
 }
+
+func TestProvisionScript_WritesExecutableFile(t *testing.T) {
+	// GIVEN a target directory and script content
+	runtimeDir := t.TempDir()
+	targetDir := filepath.Join(runtimeDir, "bin")
+	content := "#!/bin/sh\nexit 0\n"
+
+	// WHEN provisioning the script artifact
+	err := provisionScript(targetDir, "pkg-config", content)
+
+	// THEN the file should be written with executable permissions
+	assert.NoError(t, err, "provisionScript should succeed")
+	dest := filepath.Join(targetDir, "pkg-config")
+	info, statErr := os.Stat(dest)
+	assert.NoError(t, statErr, "Script file should exist after provisioning")
+	assert.Equal(t, os.FileMode(0755), info.Mode().Perm(), "Script file should have 0755 permissions")
+	got, readErr := os.ReadFile(dest)
+	assert.NoError(t, readErr)
+	assert.Equal(t, content, string(got), "Script file should contain the provided content")
+}
+
+func TestProvisionScript_CreatesTargetDirectory(t *testing.T) {
+	// GIVEN a target directory that does not exist yet
+	runtimeDir := t.TempDir()
+	targetDir := filepath.Join(runtimeDir, "bin", "nested")
+
+	// WHEN provisioning the script artifact
+	err := provisionScript(targetDir, "tool", "#!/bin/sh\n")
+
+	// THEN the directory tree and file should be created
+	assert.NoError(t, err, "provisionScript should create missing parent directories")
+	_, statErr := os.Stat(filepath.Join(targetDir, "tool"))
+	assert.NoError(t, statErr, "Script file should exist after directory creation")
+}

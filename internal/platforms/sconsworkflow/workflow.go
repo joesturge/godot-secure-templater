@@ -200,6 +200,8 @@ func (posixHostAdapter) NormalizeRuntimeTools(tools *RuntimeTools) {
 func (posixHostAdapter) BuildEnv(workspace *internal.Workspace, key string) map[string]string {
 	env := map[string]string{}
 	paths := []string{
+		filepath.Join(workspace.Runtime, "bin"),
+		filepath.Join(workspace.Runtime, "python", "bin"),
 		filepath.Join(workspace.Runtime, "python"),
 		filepath.Join(workspace.Runtime, "zig"),
 		filepath.Join(workspace.Runtime, "scons"),
@@ -222,6 +224,11 @@ func (posixHostAdapter) BuildEnv(workspace *internal.Workspace, key string) map[
 	env["SCRIPT_AES256_ENCRYPTION_KEY"] = key
 
 	return env
+}
+
+// ResolveZigExecutable locates the zig binary under the runtime directory.
+func ResolveZigExecutable(runtimeDir string) (string, error) {
+	return resolveZigExecutable(runtimeDir)
 }
 
 func resolveSConsExecutable(sconsBase string, logger internal.Logger) string {

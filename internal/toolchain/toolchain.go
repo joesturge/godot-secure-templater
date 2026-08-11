@@ -34,6 +34,19 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 
 		targetDir := filepath.Join(ctx.Workspace.Runtime, art.ExtractTo)
 
+		// Script artifacts are written directly to disk without downloading.
+		if art.Kind == internal.ArchiveScript {
+			if err := provisionScript(targetDir, art.Name, art.Content); err != nil {
+				return &internal.Error{
+					Code:    internal.ExitGenericFailure,
+					Message: fmt.Sprintf("Failed to write script artifact: %s", art.Name),
+					Details: err.Error(),
+				}
+			}
+			ctx.Logger.Info("    ✓ Provisioned successfully")
+			continue
+		}
+
 		// Check if already extracted and has content
 		if isProvisionedAndValid(targetDir, art.Name) {
 			ctx.Logger.Info("    ✓ Already provisioned")
@@ -507,5 +520,17 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 		}
 	}
 
+	return nil
+}
+
+// provisionScript writes a script artifact directly to targetDir/<name> with 0755 permissions.
+func provisionScript(targetDir, name, content string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	}
+	dest := filepath.Join(targetDir, name)
+	if err := os.WriteFile(dest, []byte(content), 0755); err != nil {
+		return fmt.Errorf("failed to write script %s: %w", dest, err)
+	}
 	return nil
 }

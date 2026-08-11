@@ -50,8 +50,12 @@ func TestPosixHostBuildEnv(t *testing.T) {
 	// WHEN building environment overrides
 	env := adapter.BuildEnv(workspace, "test-key")
 
-	// THEN PATH should use POSIX separator and key should be set
+	// THEN PATH should use POSIX separator, include python/bin, and set the key
 	assert.Contains(t, env["PATH"], ":", "POSIX PATH should use colon separator")
+	assert.Contains(t, env["PATH"], filepath.Join("/tmp", "runtime", "python", "bin"),
+		"POSIX PATH should include python/bin so the provisioned python binary is reachable")
+	assert.Contains(t, env["PATH"], filepath.Join("/tmp", "runtime", "bin"),
+		"POSIX PATH should include runtime/bin so the provisioned pkg-config stub is reachable")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "BuildEnv should include encryption key override")
 }
 
