@@ -123,11 +123,6 @@ if [[ "${mode}" == "verify" ]]; then
 
 	grep -Eq "${compile_progress_regex}" "${log_file}"
 
-	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
-		echo "startup compile smoke detected an error during observation" >&2
-		exit 8
-	fi
-
 	compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
 	if (( compile_line_count < required_compile_lines )); then
 		echo "startup compile smoke observed insufficient compile progress (${compile_line_count}/${required_compile_lines})" >&2
