@@ -470,19 +470,26 @@ func VerifyChecksum(filePath, expectedSHA256 string) *internal.Error {
 // installSconsToEmbeddedPython installs SCons into the embedded Python environment.
 // This ensures that python -m SCons works correctly.
 func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *internal.Error {
-	pythonExe := filepath.Join(ctx.Workspace.Runtime, "python", "python.exe")
-
-	// On non-Windows, try without .exe
-	if _, err := os.Stat(pythonExe); err != nil {
-		pythonExe = filepath.Join(ctx.Workspace.Runtime, "python", "python")
+	pythonCandidates := []string{
+		filepath.Join(ctx.Workspace.Runtime, "python", "python.exe"),
+		filepath.Join(ctx.Workspace.Runtime, "python", "python"),
+		filepath.Join(ctx.Workspace.Runtime, "python", "bin", "python"),
+		filepath.Join(ctx.Workspace.Runtime, "python", "bin", "python3"),
+	}
+	var pythonExe string
+	for _, candidate := range pythonCandidates {
+		if _, err := os.Stat(candidate); err == nil {
+			pythonExe = candidate
+			break
+		}
 	}
 
 	// Verify python exists
-	if _, err := os.Stat(pythonExe); err != nil {
+	if pythonExe == "" {
 		return &internal.Error{
 			Code:    internal.ExitGenericFailure,
 			Message: "Python not found for SCons installation",
-			Details: err.Error(),
+			Details: fmt.Sprintf("no python executable found under %s", filepath.Join(ctx.Workspace.Runtime, "python")),
 		}
 	}
 

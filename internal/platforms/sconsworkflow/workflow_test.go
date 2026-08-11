@@ -67,6 +67,25 @@ func TestResolvePythonExecutableFailsWithoutRuntimePython(t *testing.T) {
 	assert.Equal(t, filepath.Join(runtimeDir, "python", "python"), resolved, "resolvePythonExecutable should return the expected runtime python path on POSIX hosts")
 }
 
+func TestResolvePythonExecutable_BinLayout(t *testing.T) {
+	// GIVEN a python-build-standalone layout (python/bin/python)
+	runtimeDir := t.TempDir()
+	binDir := filepath.Join(runtimeDir, "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/bin directory should be creatable")
+
+	pythonPath := filepath.Join(binDir, "python")
+	err = os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "python/bin/python executable should be creatable")
+
+	// WHEN resolving the python executable
+	resolved, err := resolvePythonExecutable(runtimeDir)
+
+	// THEN it should find the bin/python layout
+	assert.NoError(t, err, "resolvePythonExecutable should succeed for python-build-standalone layout")
+	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/bin/python for python-build-standalone layout")
+}
+
 func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {
 	// GIVEN a runtime directory with zig at the runtime root layout
 	runtimeDir := t.TempDir()

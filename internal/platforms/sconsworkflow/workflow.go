@@ -268,15 +268,18 @@ func resolveSConsExecutable(sconsBase string, logger internal.Logger) string {
 }
 
 func resolvePythonExecutable(runtimeDir string) (string, error) {
-	pythonExe := filepath.Join(runtimeDir, "python", "python.exe")
-	if _, err := os.Stat(pythonExe); err != nil {
-		pythonExe = filepath.Join(runtimeDir, "python", "python")
+	candidates := []string{
+		filepath.Join(runtimeDir, "python", "python.exe"),
+		filepath.Join(runtimeDir, "python", "python"),
+		filepath.Join(runtimeDir, "python", "bin", "python"),
+		filepath.Join(runtimeDir, "python", "bin", "python3"),
 	}
-	if _, err := os.Stat(pythonExe); err == nil {
-		return pythonExe, nil
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
 	}
-
-	return pythonExe, fmt.Errorf("runtime python executable not found under %s", filepath.Join(runtimeDir, "python"))
+	return filepath.Join(runtimeDir, "python", "python"), fmt.Errorf("runtime python executable not found under %s", filepath.Join(runtimeDir, "python"))
 }
 
 func resolveZigExecutable(runtimeDir string) (string, error) {
