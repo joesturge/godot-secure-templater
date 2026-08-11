@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/joemi/godot-secure-templater/internal/cleanup"
 	"github.com/joemi/godot-secure-templater/internal/config"
@@ -175,20 +174,19 @@ func (o *Orchestrator) WriteManifest(
 	templateReleaseHash string,
 	templateDebugHash string,
 ) error {
-	m := &manifest.Manifest{
-		GodotVersion:            resolution.Version,
-		VersionResolutionMethod: string(resolution.Method),
-		Platform:                platform,
-		ToolVersion:             toolVersion,
-		ToolchainChecksums:      toolchainChecksums,
-		Timestamp:               time.Now().UTC(),
-		Success:                 success,
-		TemplateRelease:         templateReleaseHash,
-		TemplateDebug:           templateDebugHash,
-	}
+	entry := manifest.BuildEntry(
+		resolution.Version,
+		string(resolution.Method),
+		platform,
+		toolchainChecksums,
+		toolVersion,
+		success,
+		templateReleaseHash,
+		templateDebugHash,
+	)
 
 	loader := &manifest.Loader{ManifestPath: o.manifestPath}
-	if err := loader.Write(m); err != nil {
+	if err := loader.UpsertEntry(entry); err != nil {
 		return fmt.Errorf("failed to write manifest: %w", err)
 	}
 

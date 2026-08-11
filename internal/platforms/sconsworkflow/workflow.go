@@ -105,6 +105,11 @@ func VerifyCompileReadinessWithEnv(ctx *internal.RunContext, hostTuple string, p
 		envOverrides[k] = v
 	}
 	env := mergedEnv(envOverrides)
+	ctx.Logger.Debug("Verify-only host tuple: %s", hostTuple)
+	ctx.Logger.Debug("Verify-only compiler env: CC=%q CXX=%q AR=%q MINGW_PREFIX=%q", envOverrides["CC"], envOverrides["CXX"], envOverrides["AR"], envOverrides["MINGW_PREFIX"])
+	if pathValue, ok := envOverrides["PATH"]; ok {
+		ctx.Logger.Debug("Verify-only PATH head: %s", pathHead(pathValue, hostTuple))
+	}
 	zigExe, zigErr := resolveZigExecutable(ctx.Workspace.Runtime)
 	if zigErr != nil {
 		return &internal.Error{
@@ -136,8 +141,10 @@ func VerifyCompileReadinessWithEnv(ctx *internal.RunContext, hostTuple string, p
 		sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
 	}
 	sconsArgs = append(sconsArgs, "-n")
+	ctx.Logger.Debug("Verify-only SCons args: %s", strings.Join(sconsArgs, " "))
 
 	dryRun := BuildCommand(tools.PythonExe, tools.SConsExe, sconsArgs, ctx.Logger)
+	ctx.Logger.Debug("Verify-only SCons command: %s %s", dryRun.Path, strings.Join(dryRun.Args[1:], " "))
 	if err := runProbe("scons dry-run", dryRun, env, tools.GodotSource); err != nil {
 		return err
 	}
@@ -345,6 +352,18 @@ func mergedEnv(overrides map[string]string) []string {
 		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
 	}
 	return filtered
+}
+
+func pathHead(pathValue string, hostTuple string) string {
+	separator := string(os.PathListSeparator)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(hostTuple)), "windows/") {
+		separator = ";"
+	}
+	parts := strings.Split(pathValue, separator)
+	if len(parts) > 4 {
+		parts = parts[:4]
+	}
+	return strings.Join(parts, separator)
 }
 
 func runProbe(name string, cmd *exec.Cmd, env []string, dir string) *internal.Error {

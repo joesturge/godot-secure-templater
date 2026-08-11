@@ -46,6 +46,8 @@ go test ./...
 
 The integration workflow uses `.github/scripts/integration-smoke.sh`. You can run the same script locally in either mode.
 
+On Windows-hosted verification paths, the CI smoke checks deliberately clear common host compiler environment variables first, then assert that `gst` uses the provisioned Zig-based compiler environment instead of relying on host MinGW configuration.
+
 Linux host example:
 
 ```bash

@@ -5,9 +5,23 @@ import (
 	"time"
 )
 
-// Manifest records the inputs and outputs of a successful build run.
-// It enables idempotency (skip rebuild if inputs match) and serves as the cache key.
-type Manifest struct {
+// schemaVersion is the current manifest file format version.
+const schemaVersion = 1
+
+// ManifestFile is the versioned on-disk representation of manifest.json.
+// Version 1 introduced an explicit schema version and renamed the top-level
+// array to "platforms".
+type ManifestFile struct {
+	// Version identifies the manifest schema. The current version is 1.
+	Version int `json:"version"`
+
+	// Platforms holds one entry per target platform build.
+	Platforms []ManifestEntry `json:"platforms"`
+}
+
+// ManifestEntry records the inputs and outputs of a single successful build run
+// for one platform target. The manifest file stores an array of these entries.
+type ManifestEntry struct {
 	// GodotVersion is the resolved Godot version (e.g., "4.3.0").
 	GodotVersion string `json:"godot_version"`
 
@@ -41,9 +55,13 @@ type Manifest struct {
 	// Config corruption is caught at write time; manifest focuses on build inputs/outputs.
 }
 
-// CacheKey represents the set of inputs that determine build cache validity.
-// If the current build's CacheKey matches the manifest's CacheKey, and the manifest
-// is marked Success=true, the build can be skipped (unless --force-rebuild).
+// Manifest is the in-memory slice of per-platform build entries.
+// Callers work with this type; ManifestFile is only used for serialisation.
+type Manifest = []ManifestEntry
+
+// CacheKey represents the set of inputs that determine build cache validity for one
+// platform target. If a matching entry is found in the manifest and Success=true,
+// the build can be skipped (unless --force-rebuild).
 type CacheKey struct {
 	GodotVersion       string
 	Platform           string

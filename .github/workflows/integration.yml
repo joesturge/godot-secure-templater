@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: windows host -> windows target
+          - name: windows host -> windows target (bash smoke)
             runner: windows-latest
             goos: windows
             goarch: amd64
@@ -40,6 +40,9 @@ jobs:
             binary_ext: .exe
             expected_release: windows_template_release.exe
             expected_debug: windows_template_debug.exe
+            sanitize_host_env: 'true'
+            assert_zig_provenance: 'true'
+            run_pwsh_smoke: 'true'
           - name: linux host -> linux target
             runner: ubuntu-latest
             goos: linux
@@ -48,6 +51,9 @@ jobs:
             binary_ext: ""
             expected_release: linux_template_release.x86_64
             expected_debug: linux_template_debug.x86_64
+            sanitize_host_env: 'false'
+            assert_zig_provenance: 'false'
+            run_pwsh_smoke: 'false'
 
     defaults:
       run:
@@ -71,5 +77,73 @@ jobs:
         env:
           GST_GODOT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}
           GST_INTEGRATION_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'verify' }}
+          GST_SANITIZE_HOST_ENV: ${{ matrix.sanitize_host_env }}
+          GST_ASSERT_ZIG_PROVENANCE: ${{ matrix.assert_zig_provenance }}
         run: |
-          bash .github/scripts/integration-smoke.sh "$PWD" "$PWD/dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" "$GST_INTEGRATION_MODE" "${{ matrix.expected_release }}" "${{ matrix.expected_debug }}" "$PWD/.github/fixtures/integration-project"
+          bash .github/scripts/integration-smoke.sh "$PWD" "$PWD/dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" "$GST_INTEGRATION_MODE" "${{ matrix.expected_release }}" "${{ matrix.expected_debug }}" "$PWD/.github/fixtures/integration-project" "$GST_SANITIZE_HOST_ENV" "$GST_ASSERT_ZIG_PROVENANCE"
+
+      - name: Run integration verify smoke in PowerShell
+        if: ${{ matrix.run_pwsh_smoke == 'true' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'verify') }}
+        shell: pwsh
+        env:
+          GST_GODOT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}
+        run: |
+          $workspaceRoot = (Get-Location).Path
+          $projectDir = Join-Path $workspaceRoot "integration-project-pwsh"
+          if (Test-Path $projectDir) {
+            Remove-Item -Recurse -Force $projectDir
+          }
+          New-Item -ItemType Directory -Path $projectDir | Out-Null
+          Copy-Item -Recurse -Force "$workspaceRoot/.github/fixtures/integration-project/*" $projectDir
+
+          Push-Location $projectDir
+          Remove-Item Env:MINGW_PREFIX -ErrorAction SilentlyContinue
+          Remove-Item Env:MSYSTEM -ErrorAction SilentlyContinue
+          Remove-Item Env:CC -ErrorAction SilentlyContinue
+          Remove-Item Env:CXX -ErrorAction SilentlyContinue
+          Remove-Item Env:AR -ErrorAction SilentlyContinue
+          Remove-Item Env:CFLAGS -ErrorAction SilentlyContinue
+          Remove-Item Env:CXXFLAGS -ErrorAction SilentlyContinue
+
+          $args = @(
+            "create",
+            "--force",
+            "--godot-version", "$env:GST_GODOT_VERSION",
+            "--platform", "windows/amd64",
+            "--verify-only",
+            "--verbose"
+          )
+
+          $logPath = Join-Path $projectDir "gst-integration-pwsh.log"
+          & "$workspaceRoot/dist/gst.exe" @args 2>&1 | Tee-Object -FilePath $logPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "PowerShell verify smoke failed with exit code $LASTEXITCODE"
+          }
+
+          if (-not (Test-Path ".gst/runtime/python")) { throw "missing runtime python" }
+          if (-not (Test-Path ".gst/runtime/zig")) { throw "missing runtime zig" }
+          if (-not (Test-Path ".gst/runtime/scons")) { throw "missing runtime scons" }
+          if (-not (Test-Path ".gst/runtime/godot_source")) { throw "missing runtime godot_source" }
+          if (-not (Test-Path ".gst/runtime/zig-shims")) { throw "missing runtime zig-shims" }
+          if (-not (Test-Path ".gst/runtime/zig-shims/bin")) { throw "missing runtime zig-shims/bin" }
+
+          if (Test-Path ".gst/manifest.json") { throw "manifest should not exist in verify-only mode" }
+          if (Test-Path ".gst/encryption.key") { throw "encryption key should not exist in verify-only mode" }
+          if (Test-Path ".gst/templates/windows_template_release.exe") { throw "release template should not exist in verify-only mode" }
+          if (Test-Path ".gst/templates/windows_template_debug.exe") { throw "debug template should not exist in verify-only mode" }
+
+          $log = Get-Content -Raw $logPath
+          if ($log -notmatch 'Verify-only compiler env: CC="zig cc" CXX="zig c\+\+" AR="zig ar"') {
+            throw "missing compiler provenance in verify log"
+          }
+          if ($log -notmatch 'Verify-only compiler env: .*MINGW_PREFIX=".+"') {
+            throw "missing MINGW_PREFIX provenance in verify log"
+          }
+          if ($log -notmatch 'Verify-only PATH head: .*zig-shims') {
+            throw "missing zig-shims path provenance in verify log"
+          }
+          if ($log -notmatch 'Verify-only SCons args: .*use_llvm=yes.*use_mingw=no') {
+            throw "missing expected SCons args in verify log"
+          }
+
+          Pop-Location

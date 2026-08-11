@@ -6,7 +6,6 @@ import (
 	"github.com/joemi/godot-secure-templater/internal"
 	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/platform"
-	"github.com/joemi/godot-secure-templater/internal/platforms/sconsworkflow"
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
 )
 
@@ -33,7 +32,7 @@ func init() {
 				)
 			},
 			Verify: func(ctx *internal.RunContext) *internal.Error {
-				return sconsworkflow.VerifyCompileReadiness(ctx, hostTuple, profile)
+				return verifyCompileReadiness(ctx, profile)
 			},
 			ArtifactPaths: func(workspace *internal.Workspace) (releasePath string, debugPath string) {
 				return filepath.Join(workspace.Templates, profile.DestinationTemplateName(builder.BuildRelease)), filepath.Join(workspace.Templates, profile.DestinationTemplateName(builder.BuildDebug))
