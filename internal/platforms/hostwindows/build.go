@@ -88,6 +88,14 @@ func prependWindowsPath(entry string, existing string) string {
 func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 	shimRoot := filepath.Join(runtimeDir, "zig-shims")
 	shimBin := filepath.Join(shimRoot, "bin")
+	zigExe, err := resolveBundledZigExecutable(runtimeDir)
+	if err != nil {
+		return &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: "Compile readiness check failed: zig shim setup",
+			Details: err.Error(),
+		}
+	}
 	if err := os.MkdirAll(shimBin, 0o755); err != nil {
 		return &internal.Error{
 			Code:    internal.ExitBuildFailed,
@@ -112,7 +120,7 @@ func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 	for _, prefix := range []string{"", "x86_64-w64-mingw32-"} {
 		for name, subcommand := range shims {
 			filePath := filepath.Join(shimBin, prefix+name+".cmd")
-			content := fmt.Sprintf("@echo off\r\nzig %s %%*\r\n", subcommand)
+			content := fmt.Sprintf("@echo off\r\n\"%s\" %s %%*\r\n", zigExe, subcommand)
 			if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 				return &internal.Error{
 					Code:    internal.ExitBuildFailed,
@@ -124,6 +132,33 @@ func ensureWindowsZigShims(runtimeDir string) *internal.Error {
 	}
 
 	return nil
+}
+
+func resolveBundledZigExecutable(runtimeDir string) (string, error) {
+	zigBase := filepath.Join(runtimeDir, "zig")
+	candidates := []string{
+		filepath.Join(zigBase, "zig.exe"),
+		filepath.Join(zigBase, "zig"),
+	}
+
+	if entries, err := os.ReadDir(zigBase); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				candidates = append(candidates,
+					filepath.Join(zigBase, entry.Name(), "zig.exe"),
+					filepath.Join(zigBase, entry.Name(), "zig"),
+				)
+			}
+		}
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("zig executable not found under %s", zigBase)
 }
 
 func makeEnv(overrides map[string]string) []string {
