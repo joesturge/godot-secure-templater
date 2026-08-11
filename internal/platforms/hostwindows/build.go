@@ -58,6 +58,16 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	env["CC"] = "zig cc"
 	env["CXX"] = "zig c++"
 	env["AR"] = "zig ar"
+	// Strip host Visual Studio/Windows SDK toolchain variables so zig does not
+	// inherit MSVC headers or libs from the runner.
+	env["CL"] = ""
+	env["INCLUDE"] = ""
+	env["LIB"] = ""
+	env["LIBPATH"] = ""
+	env["VCINSTALLDIR"] = ""
+	env["VCToolsInstallDir"] = ""
+	env["WindowsSdkDir"] = ""
+	env["UniversalCRTSdkDir"] = ""
 
 	return env
 }
@@ -72,6 +82,9 @@ func makeEnv(overrides map[string]string) []string {
 		}
 	}
 	for k, v := range overrides {
+		if v == "" {
+			continue
+		}
 		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
 	}
 	return filtered
