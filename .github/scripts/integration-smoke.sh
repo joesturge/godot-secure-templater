@@ -30,17 +30,15 @@ esac
 gst_args=(
 	create
 	--force
+	--force-rebuild
 	--godot-version "${godot_version}"
 	--platform "${target_tuple}"
 )
 
 if [[ "${mode}" == "verify" ]]; then
-	gst_args+=(--verify-only)
 	if [[ "${assert_zig_provenance}" == "true" ]]; then
 		gst_args+=(--verbose)
 	fi
-else
-	gst_args+=(--force-rebuild)
 fi
 
 if [[ "${sanitize_host_env}" == "true" ]]; then
@@ -54,28 +52,103 @@ if [[ "${sanitize_host_env}" == "true" ]]; then
 fi
 
 log_file="${project_dir}/gst-integration.log"
-"${cli_bin}" "${gst_args[@]}" 2>&1 | tee "${log_file}"
+
+if [[ "${mode}" == "verify" ]]; then
+	set +e
+	"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
+	gst_pid=$!
+	set -e
+
+	compile_progress_regex='Compiling .+ \.\.\.'
+	fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed|exit status [0-9]+'
+	required_compile_lines=25
+	compile_started="false"
+	startup_observed="false"
+	compile_deadline=$((SECONDS + 900))
+	while kill -0 "${gst_pid}" 2>/dev/null; do
+		if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+			echo "compile startup smoke detected a build error" >&2
+			kill -TERM "${gst_pid}" 2>/dev/null || true
+			wait "${gst_pid}" || true
+			exit 8
+		fi
+
+		if grep -Eq "${compile_progress_regex}" "${log_file}"; then
+			compile_started="true"
+			compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
+			if (( compile_line_count >= required_compile_lines )); then
+				startup_observed="true"
+				break
+			fi
+		fi
+
+		if (( SECONDS >= compile_deadline )); then
+			echo "timed out waiting for SCons compile start" >&2
+			kill -TERM "${gst_pid}" 2>/dev/null || true
+			wait "${gst_pid}" || true
+			exit 8
+		fi
+
+		sleep 1
+	done
+
+	if [[ "${compile_started}" != "true" ]]; then
+		wait "${gst_pid}" || true
+		echo "SCons compile did not start" >&2
+		exit 8
+	fi
+
+	if [[ "${startup_observed}" != "true" ]]; then
+		echo "SCons compile startup did not reach required compile progress (${required_compile_lines} lines)" >&2
+		kill -TERM "${gst_pid}" 2>/dev/null || true
+		wait "${gst_pid}" || true
+		exit 8
+	fi
+
+	kill -TERM "${gst_pid}" 2>/dev/null || true
+	wait "${gst_pid}" || true
+else
+	"${cli_bin}" "${gst_args[@]}" 2>&1 | tee "${log_file}"
+fi
 
 if [[ "${mode}" == "verify" ]]; then
 	test -d ".gst/runtime/python"
 	test -d ".gst/runtime/zig"
 	test -d ".gst/runtime/scons"
 	test -d ".gst/runtime/godot_source"
+	test -f ".gst/encryption.key"
 
 	if [[ "${target_tuple}" == "windows/amd64" ]]; then
 		test -d ".gst/runtime/zig-shims"
 		test -d ".gst/runtime/zig-shims/bin"
 	fi
 
+	grep -Eq "${compile_progress_regex}" "${log_file}"
+
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "startup compile smoke detected an error during observation" >&2
+		exit 8
+	fi
+
+	compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
+	if (( compile_line_count < required_compile_lines )); then
+		echo "startup compile smoke observed insufficient compile progress (${compile_line_count}/${required_compile_lines})" >&2
+		exit 8
+	fi
+
 	if [[ "${assert_zig_provenance}" == "true" ]]; then
-		grep -E 'Verify-only compiler env: CC="(zig cc|clang)" CXX="(zig c\+\+|clang\+\+)" AR="(zig ar|ar)"' "${log_file}"
-		grep -E 'Verify-only compiler env: .*MINGW_PREFIX=".+"' "${log_file}"
-		grep -E 'Verify-only PATH head: .*zig-shims' "${log_file}"
-		grep -E 'Verify-only SCons args: .*use_llvm=yes.*use_mingw=no' "${log_file}"
+		if [[ "${target_tuple}" == "windows/amd64" ]]; then
+			test -f ".gst/runtime/zig-shims/bin/clang.cmd"
+			test -f ".gst/runtime/zig-shims/bin/clang++.cmd"
+			test -f ".gst/runtime/zig-shims/bin/ar.cmd"
+			grep -F 'zig cc %*' ".gst/runtime/zig-shims/bin/clang.cmd"
+			grep -F 'zig c++ %*' ".gst/runtime/zig-shims/bin/clang++.cmd"
+			grep -F 'zig ar %*' ".gst/runtime/zig-shims/bin/ar.cmd"
+			grep -E 'Compiling .+\.llvm\.o' "${log_file}"
+		fi
 	fi
 
 	test ! -f ".gst/manifest.json"
-	test ! -f ".gst/encryption.key"
 	test ! -f ".gst/templates/${expected_release}"
 	test ! -f ".gst/templates/${expected_debug}"
 

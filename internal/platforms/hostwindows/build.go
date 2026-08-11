@@ -68,11 +68,10 @@ func buildEnv(workspace *internal.Workspace, key string) map[string]string {
 	shimBin := filepath.Join(shimRoot, "bin")
 	env["PATH"] = prependWindowsPath(shimBin, env["PATH"])
 	env["MINGW_PREFIX"] = shimRoot
-	// Use single-token shim names on Windows so SCons process spawning does not
-	// treat multi-word values (e.g. "zig cc") as a missing executable path.
-	env["CC"] = "clang"
-	env["CXX"] = "clang++"
-	env["AR"] = "ar"
+	// Force compiler provenance to provisioned Zig and avoid host toolchain coupling.
+	env["CC"] = "zig cc"
+	env["CXX"] = "zig c++"
+	env["AR"] = "zig ar"
 
 	return env
 }
