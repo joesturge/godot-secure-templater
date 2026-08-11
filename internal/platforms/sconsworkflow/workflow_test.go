@@ -90,6 +90,26 @@ func TestResolvePythonExecutable_BinLayout(t *testing.T) {
 	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/bin/python for python-build-standalone layout")
 }
 
+func TestResolvePythonExecutable_NestedSubdirLayout(t *testing.T) {
+	// GIVEN a python-build-standalone layout where the archive extracts to a
+	// nested python/ subdirectory (e.g. runtime/python/python/bin/python3)
+	runtimeDir := t.TempDir()
+	binDir := filepath.Join(runtimeDir, "python", "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/python/bin directory should be creatable")
+
+	pythonPath := filepath.Join(binDir, "python3")
+	err = os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "python/python/bin/python3 executable should be creatable")
+
+	// WHEN resolving the python executable
+	resolved, err := resolvePythonExecutable(runtimeDir)
+
+	// THEN it should find the nested subdirectory layout
+	assert.NoError(t, err, "resolvePythonExecutable should succeed for nested python-build-standalone layout")
+	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/python/bin/python3 for nested layout")
+}
+
 func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {
 	// GIVEN a runtime directory with zig at the runtime root layout
 	runtimeDir := t.TempDir()

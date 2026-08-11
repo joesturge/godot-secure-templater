@@ -280,9 +280,14 @@ func resolvePythonExecutable(runtimeDir string) (string, error) {
 		filepath.Join(runtimeDir, "python", "python"),
 		filepath.Join(runtimeDir, "python", "bin", "python"),
 		filepath.Join(runtimeDir, "python", "bin", "python3"),
+		// python-build-standalone archives extract to a nested python/ subdirectory,
+		// e.g. runtime/python/python/bin/python3
+		filepath.Join(runtimeDir, "python", "python", "bin", "python3"),
+		filepath.Join(runtimeDir, "python", "python", "bin", "python"),
 	}
 	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() {
 			return candidate, nil
 		}
 	}
