@@ -95,13 +95,28 @@ if [[ "${mode}" == "verify" ]]; then
 		sleep 1
 	done
 
+	compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
+	if [[ "${compile_started}" != "true" ]] && (( compile_line_count > 0 )); then
+		compile_started="true"
+	fi
+
 	if [[ "${compile_started}" != "true" ]]; then
 		wait "${gst_pid}" || true
-		echo "SCons compile did not start" >&2
+		if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+			echo "SCons compile failed before the harness observed startup" >&2
+		else
+			echo "SCons compile did not start" >&2
+		fi
 		exit 8
 	fi
 
 	if [[ "${startup_observed}" != "true" ]]; then
+		if ! kill -0 "${gst_pid}" 2>/dev/null && grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+			wait "${gst_pid}" || true
+			echo "SCons compile started but failed before reaching required compile progress (${required_compile_lines} lines)" >&2
+			exit 8
+		fi
+
 		echo "SCons compile startup did not reach required compile progress (${required_compile_lines} lines)" >&2
 		kill -TERM "${gst_pid}" 2>/dev/null || true
 		wait "${gst_pid}" || true

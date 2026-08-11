@@ -17,9 +17,9 @@ func TestBuildEnvUsesBundledZigCompiler(t *testing.T) {
 	env := buildEnv(workspace, "test-key")
 
 	// THEN Windows builds should invoke Zig directly and stay off MinGW wrappers
-	assert.Equal(t, "clang", env["CC"], "Windows host build env should use the Zig-backed clang shim as the C compiler")
-	assert.Equal(t, "clang++", env["CXX"], "Windows host build env should use the Zig-backed clang++ shim as the C++ compiler")
-	assert.Equal(t, "ar", env["AR"], "Windows host build env should use the Zig-backed ar shim as the archiver")
+	assert.Equal(t, "zig cc", env["CC"], "Windows host build env should advertise Zig as the C compiler source")
+	assert.Equal(t, "zig c++", env["CXX"], "Windows host build env should advertise Zig as the C++ compiler source")
+	assert.Equal(t, "zig ar", env["AR"], "Windows host build env should advertise Zig as the archiver source")
 	assert.Equal(t, filepath.Join(workspace.Runtime, "zig-shims"), env["MINGW_PREFIX"], "Windows host build env should point MINGW_PREFIX at the Zig shim root")
 	assert.Contains(t, env["PATH"], filepath.Join(workspace.Runtime, "zig"), "Windows host build env should include the bundled Zig bin path")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "Windows host build env should preserve the encryption key override")
