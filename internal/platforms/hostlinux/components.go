@@ -9,14 +9,15 @@ import (
 
 // pkgConfigStub is a minimal pkg-config wrapper written into the provisioned
 // toolchain bin directory so that Godot's linuxbsd SCons checks never fall
-// back to the host's pkg-config binary. It reports all packages as present
-// with no compile/link flags, relying on zig's built-in libc and the sysroot
-// headers already known to the zig compiler.
+// back to the host's pkg-config binary. It reports all packages as NOT present
+// (exit 1) so that optional system integrations (fontconfig, PulseAudio, udev,
+// X11, Wayland) are automatically disabled by SCons rather than enabled with
+// missing compile/link flags that would break the actual compile.
 const pkgConfigStub = `#!/bin/sh
 # Provisioned pkg-config stub – part of the gst toolchain.
-# Reports all packages as present with no extra compile/link flags so that
-# Godot's linuxbsd SCons feature checks succeed without any host pkg-config.
-exit 0
+# Reports all packages as not found so that Godot's linuxbsd SCons feature
+# checks disable optional system integrations for a self-contained Zig build.
+exit 1
 `
 
 // Components returns the toolchain components for a Linux target on a Linux host.

@@ -19,10 +19,10 @@ func Components(version string) []internal.Artifact {
 			Kind:      internal.ArchiveZip,
 		},
 		{
-			Name:      "mingw",
-			URL:       "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-x86_64.zip",
-			SHA256:    "b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35",
-			ExtractTo: "mingw",
+			Name:      "zig",
+			URL:       "https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip",
+			SHA256:    "c3ae84ba7501e98feadb8ab4fb8555f08fc75ed1bbf0c0bfec9886d779259bb3",
+			ExtractTo: "zig",
 			Kind:      internal.ArchiveZip,
 		},
 		{

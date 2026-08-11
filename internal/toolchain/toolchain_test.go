@@ -211,13 +211,19 @@ func TestInstallSconsToEmbeddedPython_VersionedPythonOnly(t *testing.T) {
 	err := os.MkdirAll(binDir, 0755)
 	assert.NoError(t, err, "python/bin directory should be creatable")
 
+	// Create a real runnable python3.11 stub that writes an invocation marker.
+	markerFile := filepath.Join(tempDir, "python_invoked.marker")
+	pythonScript := "#!/bin/sh\ntouch " + markerFile + "\nexit 0\n"
 	pythonExe := filepath.Join(binDir, "python3.11")
-	err = os.WriteFile(pythonExe, []byte("fake python"), 0755)
-	assert.NoError(t, err, "Failed to create python3.11 executable")
+	err = os.WriteFile(pythonExe, []byte(pythonScript), 0755)
+	assert.NoError(t, err, "python3.11 executable should be writable")
 
+	// Create a minimal setup.py so the install command can run to completion.
 	sconsDir := filepath.Join(tempDir, "scons")
 	err = os.Mkdir(sconsDir, 0755)
-	assert.NoError(t, err, "Failed to create scons directory")
+	assert.NoError(t, err, "scons directory should be creatable")
+	err = os.WriteFile(filepath.Join(sconsDir, "setup.py"), []byte("# stub\n"), 0644)
+	assert.NoError(t, err, "setup.py stub should be writable")
 
 	ctx := &internal.RunContext{
 		Workspace: &internal.Workspace{
@@ -229,11 +235,10 @@ func TestInstallSconsToEmbeddedPython_VersionedPythonOnly(t *testing.T) {
 	// WHEN calling installSconsToEmbeddedPython with only python3.11 present
 	installErr := installSconsToEmbeddedPython(ctx, sconsDir)
 
-	// THEN it should not fail due to missing python (it may fail on setup.py absence)
-	// but must NOT fail with "no python executable found"
-	if installErr != nil {
-		assert.NotContains(t, installErr.Details, "no python executable found", "installSconsToEmbeddedPython should find python3.11 even without symlinks")
-	}
+	// THEN the versioned python executable should have been invoked (marker present)
+	assert.Nil(t, installErr, "installSconsToEmbeddedPython should succeed with a runnable python3.11 and a setup.py")
+	_, statErr := os.Stat(markerFile)
+	assert.NoError(t, statErr, "installSconsToEmbeddedPython should have invoked python3.11 (invocation marker not found)")
 }
 
 func TestInstallSconsToEmbeddedPython_DirectoryNotFound(t *testing.T) {
@@ -468,7 +473,7 @@ func TestProvisionScript_WritesExecutableFile(t *testing.T) {
 	assert.NoError(t, statErr, "Script file should exist after provisioning")
 	assert.Equal(t, os.FileMode(0755), info.Mode().Perm(), "Script file should have 0755 permissions")
 	got, readErr := os.ReadFile(dest)
-	assert.NoError(t, readErr)
+	assert.NoError(t, readErr, "Script file should be readable after provisioning")
 	assert.Equal(t, content, string(got), "Script file should contain the provided content")
 }
 
@@ -484,4 +489,24 @@ func TestProvisionScript_CreatesTargetDirectory(t *testing.T) {
 	assert.NoError(t, err, "provisionScript should create missing parent directories")
 	_, statErr := os.Stat(filepath.Join(targetDir, "tool"))
 	assert.NoError(t, statErr, "Script file should exist after directory creation")
+}
+
+func TestProvisionScript_ResetsPermissionsOnExistingFile(t *testing.T) {
+	// GIVEN a pre-existing script file with non-executable permissions
+	runtimeDir := t.TempDir()
+	targetDir := filepath.Join(runtimeDir, "bin")
+	err := os.MkdirAll(targetDir, 0755)
+	assert.NoError(t, err, "bin directory should be creatable")
+	dest := filepath.Join(targetDir, "pkg-config")
+	err = os.WriteFile(dest, []byte("old content"), 0644)
+	assert.NoError(t, err, "pre-existing file should be writable")
+
+	// WHEN provisioning the same artifact again with new content
+	err = provisionScript(targetDir, "pkg-config", "#!/bin/sh\nexit 1\n")
+
+	// THEN the file should have 0755 permissions regardless of prior state
+	assert.NoError(t, err, "provisionScript should succeed on overwrite")
+	info, statErr := os.Stat(dest)
+	assert.NoError(t, statErr, "Script file should exist after overwrite provisioning")
+	assert.Equal(t, os.FileMode(0755), info.Mode().Perm(), "Script file should have 0755 permissions even when overwriting a non-executable file")
 }

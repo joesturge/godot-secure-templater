@@ -36,6 +36,7 @@ gst_args=(
 )
 
 if [[ "${mode}" == "verify" ]]; then
+	gst_args+=(--verify-only)
 	if [[ "${assert_zig_provenance}" == "true" ]]; then
 		gst_args+=(--verbose)
 	fi
@@ -52,7 +53,7 @@ fi
 
 log_file="${project_dir}/gst-integration.log"
 
-if [[ "${mode}" == "verify" ]]; then
+if [[ "${mode}" == "compile" ]]; then
 	set +e
 	"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
 	gst_pid=$!
@@ -85,8 +86,12 @@ if [[ "${mode}" == "verify" ]]; then
 			fi
 		fi
 
-		if [[ "${compile_started}" != "true" ]] && (( SECONDS >= compile_deadline )); then
-			echo "timed out waiting for SCons compile start" >&2
+		if (( SECONDS >= compile_deadline )); then
+			if [[ "${compile_started}" != "true" ]]; then
+				echo "timed out waiting for SCons compile start" >&2
+			else
+				echo "timed out waiting for SCons compile progress (${required_compile_lines} lines)" >&2
+			fi
 			kill -TERM "${gst_pid}" 2>/dev/null || true
 			wait "${gst_pid}" || true
 			exit 8
@@ -125,14 +130,11 @@ if [[ "${mode}" == "verify" ]]; then
 
 	kill -TERM "${gst_pid}" 2>/dev/null || true
 	wait "${gst_pid}" || true
-else
-	"${cli_bin}" "${gst_args[@]}" 2>&1 | tee "${log_file}"
-fi
 
-if [[ "${mode}" == "verify" ]]; then
+	# Post-compile-smoke checks: toolchain provisioned, no completed artefacts.
 	test -d ".gst/runtime/python"
 	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/mingw"
+		test -d ".gst/runtime/zig"
 	else
 		test -d ".gst/runtime/zig"
 	fi
@@ -155,6 +157,26 @@ if [[ "${mode}" == "verify" ]]; then
 	fi
 
 	test ! -f ".gst/manifest.json"
+	test ! -f ".gst/templates/${expected_release}"
+	test ! -f ".gst/templates/${expected_debug}"
+
+	popd >/dev/null
+	exit 0
+else
+	# verify mode: run with --verify-only and check toolchain is provisioned, no artefacts written.
+	"${cli_bin}" "${gst_args[@]}" 2>&1 | tee "${log_file}"
+
+	test -d ".gst/runtime/python"
+	if [[ "${target_tuple}" == "windows/amd64" ]]; then
+		test -d ".gst/runtime/zig"
+	else
+		test -d ".gst/runtime/zig"
+	fi
+	test -d ".gst/runtime/scons"
+	test -d ".gst/runtime/godot_source"
+
+	test ! -f ".gst/manifest.json"
+	test ! -f ".gst/encryption.key"
 	test ! -f ".gst/templates/${expected_release}"
 	test ! -f ".gst/templates/${expected_debug}"
 

@@ -1,9 +1,9 @@
 package hostlinux
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,36 +16,36 @@ func TestBuildEnvUsesAbsoluteZigCompiler(t *testing.T) {
 	runtimeDir := t.TempDir()
 	zigDir := filepath.Join(runtimeDir, "zig")
 	err := os.MkdirAll(zigDir, 0755)
-	assert.NoError(t, err)
+	assert.NoError(t, err, "zig directory should be creatable")
 	zigExe := filepath.Join(zigDir, "zig")
 	err = os.WriteFile(zigExe, []byte("#!/bin/sh\nexit 0\n"), 0755)
-	assert.NoError(t, err)
+	assert.NoError(t, err, "zig executable should be writable")
 
 	workspace := &internal.Workspace{Runtime: runtimeDir}
 
 	// WHEN building environment overrides
-	env := buildEnv(workspace, "test-key")
+	env, buildErr := buildEnv(workspace, "test-key")
 
 	// THEN CC/CXX/AR must reference the absolute path to the provisioned zig
-	assert.True(t, strings.HasPrefix(env["CC"], zigExe+" "), "CC should use absolute zig path, got: %s", env["CC"])
-	assert.Equal(t, zigExe+" cc", env["CC"], "Linux host build env should use '<abszig> cc' as the C compiler")
-	assert.Equal(t, zigExe+" c++", env["CXX"], "Linux host build env should use '<abszig> c++' as the C++ compiler")
-	assert.Equal(t, zigExe+" ar", env["AR"], "Linux host build env should use '<abszig> ar' as the archiver")
+	assert.Nil(t, buildErr, "buildEnv should succeed with provisioned zig")
+	quotedZig := fmt.Sprintf("%q", zigExe)
+	assert.Equal(t, quotedZig+" cc", env["CC"], "Linux host build env should use quoted '<abszig> cc' as the C compiler")
+	assert.Equal(t, quotedZig+" c++", env["CXX"], "Linux host build env should use quoted '<abszig> c++' as the C++ compiler")
+	assert.Equal(t, quotedZig+" ar", env["AR"], "Linux host build env should use quoted '<abszig> ar' as the archiver")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "Linux host build env should preserve the encryption key override")
 }
 
-func TestBuildEnvFallsBackGracefullyWhenZigMissing(t *testing.T) {
+func TestBuildEnvFailsWhenZigMissing(t *testing.T) {
 	// GIVEN a workspace with no provisioned zig
 	runtimeDir := t.TempDir()
 	workspace := &internal.Workspace{Runtime: runtimeDir}
 
 	// WHEN building environment overrides
-	env := buildEnv(workspace, "test-key")
+	_, buildErr := buildEnv(workspace, "test-key")
 
-	// THEN the base env should still contain the encryption key;
-	// CC/CXX/AR will be absent because zig could not be resolved.
-	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "build env should preserve encryption key even when zig is missing")
-	assert.Empty(t, env["CC"], "CC should be unset when zig is not provisioned")
+	// THEN an error should be returned because zig is required
+	assert.NotNil(t, buildErr, "buildEnv should fail when zig is not provisioned")
+	assert.Equal(t, internal.ExitBuildFailed, buildErr.Code, "build env error should have ExitBuildFailed code")
 }
 
 func TestZigCompilerEnvReturnsAbsolutePaths(t *testing.T) {
@@ -53,19 +53,20 @@ func TestZigCompilerEnvReturnsAbsolutePaths(t *testing.T) {
 	runtimeDir := t.TempDir()
 	zigDir := filepath.Join(runtimeDir, "zig")
 	err := os.MkdirAll(zigDir, 0755)
-	assert.NoError(t, err)
+	assert.NoError(t, err, "zig directory should be creatable")
 	zigExe := filepath.Join(zigDir, "zig")
 	err = os.WriteFile(zigExe, []byte("#!/bin/sh\nexit 0\n"), 0755)
-	assert.NoError(t, err)
+	assert.NoError(t, err, "zig executable should be writable")
 
 	// WHEN resolving the compiler environment
 	compilerEnv, gstErr := zigCompilerEnv(runtimeDir)
 
-	// THEN it should return absolute paths
+	// THEN it should return quoted absolute paths
 	assert.Nil(t, gstErr, "zigCompilerEnv should succeed with provisioned zig")
-	assert.Equal(t, zigExe+" cc", compilerEnv["CC"])
-	assert.Equal(t, zigExe+" c++", compilerEnv["CXX"])
-	assert.Equal(t, zigExe+" ar", compilerEnv["AR"])
+	quotedZig := fmt.Sprintf("%q", zigExe)
+	assert.Equal(t, quotedZig+" cc", compilerEnv["CC"], "CC should use quoted absolute zig path")
+	assert.Equal(t, quotedZig+" c++", compilerEnv["CXX"], "CXX should use quoted absolute zig path")
+	assert.Equal(t, quotedZig+" ar", compilerEnv["AR"], "AR should use quoted absolute zig path")
 }
 
 func TestZigCompilerEnvFailsWhenZigMissing(t *testing.T) {
@@ -77,6 +78,6 @@ func TestZigCompilerEnvFailsWhenZigMissing(t *testing.T) {
 
 	// THEN it should return a build-failed error
 	assert.NotNil(t, gstErr, "zigCompilerEnv should fail when zig is not provisioned")
-	assert.Equal(t, internal.ExitBuildFailed, gstErr.Code)
+	assert.Equal(t, internal.ExitBuildFailed, gstErr.Code, "zigCompilerEnv should return ExitBuildFailed when zig is missing")
 }
 

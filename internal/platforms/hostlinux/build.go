@@ -47,27 +47,35 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 			sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
 		}
 
+		env, envErr := buildEnv(ctx.Workspace, key)
+		if envErr != nil {
+			return nil, envErr
+		}
+
 		cmd := sconsworkflow.BuildCommand(pythonExe, sconsExe, sconsArgs, ctx.Logger)
 		cmd.Dir = godotSrc
-		cmd.Env = makeEnv(buildEnv(ctx.Workspace, key))
+		cmd.Env = makeEnv(env)
 		return cmd, nil
 	}
 }
 
-func buildEnv(workspace *internal.Workspace, key string) map[string]string {
+func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *internal.Error) {
 	hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 	env := hostAdapter.BuildEnv(workspace, key)
 	compilerEnv, err := zigCompilerEnv(workspace.Runtime)
-	if err == nil {
-		for k, v := range compilerEnv {
-			env[k] = v
-		}
+	if err != nil {
+		return nil, err
 	}
-	return env
+	for k, v := range compilerEnv {
+		env[k] = v
+	}
+	return env, nil
 }
 
 // zigCompilerEnv resolves the absolute path to the provisioned zig binary and returns
 // CC, CXX, and AR overrides that use it directly, so no PATH lookup is needed.
+// The path is double-quoted so that workspace paths containing spaces are handled
+// correctly by SCons when it parses the compiler command string.
 func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
 	zigExe, err := sconsworkflow.ResolveZigExecutable(runtimeDir)
 	if err != nil {
@@ -77,10 +85,11 @@ func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
 			Details: err.Error(),
 		}
 	}
+	quoted := fmt.Sprintf("%q", zigExe)
 	return map[string]string{
-		"CC":  zigExe + " cc",
-		"CXX": zigExe + " c++",
-		"AR":  zigExe + " ar",
+		"CC":  quoted + " cc",
+		"CXX": quoted + " c++",
+		"AR":  quoted + " ar",
 	}, nil
 }
 

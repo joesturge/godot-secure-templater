@@ -544,5 +544,10 @@ func provisionScript(targetDir, name, content string) error {
 	if err := os.WriteFile(dest, []byte(content), 0755); err != nil {
 		return fmt.Errorf("failed to write script %s: %w", dest, err)
 	}
+	// Explicitly chmod to ensure the executable bit is set even when the file
+	// already existed with non-executable permissions before this call.
+	if err := os.Chmod(dest, 0755); err != nil {
+		return fmt.Errorf("failed to set permissions on script %s: %w", dest, err)
+	}
 	return nil
 }

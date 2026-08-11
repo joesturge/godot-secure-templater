@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
@@ -15,10 +14,6 @@ import (
 
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
-		if err := ensureWindowsMingwPrefix(ctx.Workspace.Runtime); err != nil {
-			return nil, err
-		}
-
 		tools, err := sconsworkflow.ResolveRuntimeTools(ctx.Workspace, ctx.Logger)
 		if err != nil {
 			return nil, err
@@ -44,104 +39,58 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 			sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
 		}
 
+		env, envErr := buildEnv(ctx.Workspace, key)
+		if envErr != nil {
+			return nil, envErr
+		}
+
 		cmd := sconsworkflow.BuildCommand(pythonExe, sconsExe, sconsArgs, ctx.Logger)
 		cmd.Dir = godotSrc
-		cmd.Env = makeEnv(buildEnv(ctx.Workspace, key))
+		cmd.Env = makeEnv(env)
 		return cmd, nil
 	}
 }
 
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
-	if err := ensureWindowsMingwPrefix(ctx.Workspace.Runtime); err != nil {
+	env, err := buildEnv(ctx.Workspace, "verify-only")
+	if err != nil {
 		return err
 	}
-
-	return sconsworkflow.VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, buildEnv(ctx.Workspace, "verify-only"))
+	return sconsworkflow.VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, env)
 }
 
-func buildEnv(workspace *internal.Workspace, key string) map[string]string {
+func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *internal.Error) {
 	hostAdapter := sconsworkflow.WindowsHostAdapter()
 	env := hostAdapter.BuildEnv(workspace, key)
-	mingwPrefix := mingwPrefixForEnv(workspace.Runtime)
-	mingwBin := filepath.Join(mingwPrefix, "bin")
-	env["PATH"] = prependWindowsPath(mingwBin, env["PATH"])
-	env["MINGW_PREFIX"] = mingwPrefix
-	env["CC"] = "gcc"
-	env["CXX"] = "g++"
-	env["AR"] = "ar"
-	return env
+	compilerEnv, err := zigWindowsCompilerEnv(workspace.Runtime)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range compilerEnv {
+		env[k] = v
+	}
+	return env, nil
 }
 
-func prependWindowsPath(entry string, existing string) string {
-	if existing == "" {
-		return entry
-	}
-	if strings.HasPrefix(existing, entry+";") || existing == entry {
-		return existing
-	}
-	return entry + ";" + existing
-}
-
-func ensureWindowsMingwPrefix(runtimeDir string) *internal.Error {
-	if _, err := resolveBundledMingwPrefix(runtimeDir); err != nil {
-		return &internal.Error{
+// zigWindowsCompilerEnv resolves the absolute path to the provisioned zig.exe and returns
+// CC, CXX, and AR overrides that satisfy the Windows Zig compiler contract.
+// The path is double-quoted so that workspace paths containing spaces are handled
+// correctly by SCons when it parses the compiler command string.
+func zigWindowsCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
+	zigExe, err := sconsworkflow.ResolveZigExecutable(runtimeDir)
+	if err != nil {
+		return nil, &internal.Error{
 			Code:    internal.ExitBuildFailed,
-			Message: "Compile readiness check failed: MinGW setup",
+			Message: "Provisioned zig compiler not found",
 			Details: err.Error(),
 		}
 	}
-	return nil
-}
-
-func mingwPrefixForEnv(runtimeDir string) string {
-	prefix, err := resolveBundledMingwPrefix(runtimeDir)
-	if err != nil {
-		return filepath.Join(runtimeDir, "mingw")
-	}
-	return prefix
-}
-
-func resolveBundledMingwPrefix(runtimeDir string) (string, error) {
-	base := filepath.Join(runtimeDir, "mingw")
-	if hasBinDir(base) {
-		return base, nil
-	}
-
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return "", fmt.Errorf("mingw directory not found under %s: %w", base, err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		candidate := filepath.Join(base, entry.Name())
-		if hasBinDir(candidate) {
-			return candidate, nil
-		}
-
-		children, childErr := os.ReadDir(candidate)
-		if childErr != nil {
-			continue
-		}
-		for _, child := range children {
-			if !child.IsDir() {
-				continue
-			}
-			grandchild := filepath.Join(candidate, child.Name())
-			if hasBinDir(grandchild) {
-				return grandchild, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no MinGW toolchain with a bin directory found under %s", base)
-}
-
-func hasBinDir(path string) bool {
-	info, err := os.Stat(filepath.Join(path, "bin"))
-	return err == nil && info.IsDir()
+	quoted := fmt.Sprintf("%q", zigExe)
+	return map[string]string{
+		"CC":  quoted + " cc",
+		"CXX": quoted + " c++",
+		"AR":  quoted + " ar",
+	}, nil
 }
 
 func makeEnv(overrides map[string]string) []string {
@@ -158,3 +107,4 @@ func makeEnv(overrides map[string]string) []string {
 	}
 	return filtered
 }
+
