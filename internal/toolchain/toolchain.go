@@ -117,6 +117,13 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 			}
 		}
 
+		// Special handling for Python: enable PYTHONPATH support in the embedded distribution.
+		// The Windows embedded zip ships a python*._pth file that disables PYTHONPATH; without
+		// patching it, subprocesses like em++.py cannot import sibling modules such as emcc.
+		if art.Name == "python" {
+			enableSiteForEmbeddedPython(targetDir)
+		}
+
 		ctx.Logger.Info("    ✓ Provisioned successfully")
 	}
 
@@ -569,6 +576,29 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 	}
 
 	return nil
+}
+
+// enableSiteForEmbeddedPython patches any python*._pth files found in pythonDir to uncomment
+// "#import site", enabling PYTHONPATH support in the Windows embedded Python distribution.
+// Without this, the embedded Python ignores PYTHONPATH entirely, causing em++.py to fail with
+// "ModuleNotFoundError: No module named 'emcc'" when SCons invokes it as a subprocess.
+// This is a no-op if no ._pth files exist (e.g. on POSIX hosts).
+func enableSiteForEmbeddedPython(pythonDir string) {
+	matches, err := filepath.Glob(filepath.Join(pythonDir, "python*._pth"))
+	if err != nil || len(matches) == 0 {
+		return
+	}
+	for _, pthFile := range matches {
+		data, err := os.ReadFile(pthFile)
+		if err != nil {
+			continue
+		}
+		patched := strings.ReplaceAll(string(data), "#import site", "import site")
+		if patched == string(data) {
+			continue
+		}
+		_ = os.WriteFile(pthFile, []byte(patched), 0644)
+	}
 }
 
 // provisionScript writes a script artifact directly to targetDir/<name> with 0755 permissions.

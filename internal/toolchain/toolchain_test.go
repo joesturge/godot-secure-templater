@@ -16,6 +16,52 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
+func TestEnableSiteForEmbeddedPython_UncommentsSiteImport(t *testing.T) {
+	// GIVEN a Python directory containing a python311._pth file with #import site commented out
+	pythonDir := t.TempDir()
+	pthContent := "python311.zip\n.\n\n# Uncomment to run site.main() automatically\n#import site\n"
+	pthPath := filepath.Join(pythonDir, "python311._pth")
+	err := os.WriteFile(pthPath, []byte(pthContent), 0644)
+	assert.NoError(t, err, "._pth file should be writable")
+
+	// WHEN enabling site for the embedded Python installation
+	enableSiteForEmbeddedPython(pythonDir)
+
+	// THEN the ._pth file should have import site uncommented so that PYTHONPATH is respected
+	got, readErr := os.ReadFile(pthPath)
+	assert.NoError(t, readErr, "._pth file should be readable after patching")
+	assert.Contains(t, string(got), "import site", "._pth should contain 'import site' after patching")
+	assert.NotContains(t, string(got), "#import site", "._pth should not contain the commented-out '#import site' after patching")
+}
+
+func TestEnableSiteForEmbeddedPython_NoopWhenAlreadyEnabled(t *testing.T) {
+	// GIVEN a Python directory with a ._pth file that already has import site enabled
+	pythonDir := t.TempDir()
+	pthContent := "python311.zip\n.\nimport site\n"
+	pthPath := filepath.Join(pythonDir, "python311._pth")
+	err := os.WriteFile(pthPath, []byte(pthContent), 0644)
+	assert.NoError(t, err, "._pth file should be writable")
+
+	// WHEN enabling site for the embedded Python installation
+	enableSiteForEmbeddedPython(pythonDir)
+
+	// THEN the ._pth file should still have import site and be otherwise unchanged
+	got, readErr := os.ReadFile(pthPath)
+	assert.NoError(t, readErr, "._pth file should be readable after patching")
+	assert.Contains(t, string(got), "import site", "._pth should still contain 'import site'")
+}
+
+func TestEnableSiteForEmbeddedPython_NoopWhenNoPthFile(t *testing.T) {
+	// GIVEN a Python directory with no ._pth files (e.g. a POSIX build-standalone layout)
+	pythonDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(pythonDir, "python3"), []byte("#!/bin/sh\n"), 0755)
+	assert.NoError(t, err, "python stub should be writable")
+
+	// WHEN enabling site for the embedded Python installation (no ._pth present)
+	// THEN it should be a no-op without panicking or returning an error
+	enableSiteForEmbeddedPython(pythonDir)
+}
+
 func TestVerifyChecksum_Valid(t *testing.T) {
 	// GIVEN a file with known content
 	tempDir := t.TempDir()
