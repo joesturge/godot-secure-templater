@@ -103,7 +103,7 @@ func compileSingle(
 }
 
 // streamOutput reads from a pipe and logs each line.
-func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.ReadCloser, isError bool) {
+func streamOutput(logger internal.Logger, reader io.ReadCloser, isError bool) {
 	scanner := bufio.NewScanner(reader)
 	parser := progress.NewParser()
 	lastStage := progress.StageUnknown
@@ -121,22 +121,14 @@ func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.Re
 		}
 
 		if isError {
-			if loggerWithWarn, ok := logger.(interface{ Warn(string, ...interface{}) }); ok {
-				loggerWithWarn.Warn(line)
-			} else {
-				logger.Info(line)
-			}
+			logger.Warn(line)
 		} else {
 			logger.Info(line)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		if loggerWithWarn, ok := logger.(interface{ Warn(string, ...interface{}) }); ok {
-			loggerWithWarn.Warn("stream output read error: %v", err)
-		} else {
-			logger.Info("stream output read error: %v", err)
-		}
+		logger.Warn("stream output read error: %v", err)
 	}
 }
 

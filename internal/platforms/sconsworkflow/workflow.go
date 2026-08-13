@@ -38,11 +38,6 @@ func AdapterForHostTuple(hostTuple string) HostAdapter {
 	return posixHostAdapter{}
 }
 
-// WindowsHostAdapter returns the explicit adapter for Windows-hosted compilation.
-func WindowsHostAdapter() HostAdapter {
-	return windowsHostAdapter{}
-}
-
 // ResolveRuntimeTools locates python, scons and Godot source directories under runtime.
 func ResolveRuntimeTools(workspace *internal.Workspace, logger internal.Logger) (*RuntimeTools, *internal.Error) {
 	sconsBase := filepath.Join(workspace.Runtime, "scons")
@@ -84,11 +79,6 @@ func BuildCommand(pythonExe string, sconsExe string, sconsArgs []string, logger 
 
 	logger.Info("    Using SCons script directly")
 	return exec.Command(pythonExe, append([]string{sconsExe}, sconsArgs...)...)
-}
-
-// VerifyCompileReadiness validates that runtime tools are discoverable and that a no-build SCons invocation succeeds.
-func VerifyCompileReadiness(ctx *internal.RunContext, hostTuple string, profile targetprofiles.SConsTargetProfile) *internal.Error {
-	return VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, nil)
 }
 
 // VerifyCompileReadinessWithEnv validates readiness using optional env overrides.

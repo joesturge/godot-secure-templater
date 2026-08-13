@@ -20,6 +20,22 @@ func (l *captureLogger) Info(msg string, args ...interface{}) {
 	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
 }
 
+func (l *captureLogger) Warn(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func (l *captureLogger) Error(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func (l *captureLogger) Debug(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func (l *captureLogger) Printf(format string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(format, args...)))
+}
+
 func formatLine(msg string, args ...interface{}) string {
 	if len(args) == 0 {
 		return msg

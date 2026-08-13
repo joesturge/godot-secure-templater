@@ -23,7 +23,7 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 		if err != nil {
 			return nil, err
 		}
-		hostAdapter := sconsworkflow.WindowsHostAdapter()
+		hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 		hostAdapter.NormalizeRuntimeTools(tools)
 
 		pythonExe := tools.PythonExe
@@ -60,7 +60,7 @@ func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SCo
 }
 
 func buildEnv(workspace *internal.Workspace, key string) map[string]string {
-	hostAdapter := sconsworkflow.WindowsHostAdapter()
+	hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 	env := hostAdapter.BuildEnv(workspace, key)
 	mingwPrefix := mingwPrefixForEnv(workspace.Runtime)
 	mingwBin := filepath.Join(mingwPrefix, "bin")

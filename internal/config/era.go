@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -62,11 +63,11 @@ func CredentialPath(projectRoot string, era Era) (string, error) {
 	switch era {
 	case Era43Plus:
 		// Godot 4.3+: dedicated credential file
-		return joinPath(projectRoot, ".godot", "export_credentials.cfg"), nil
+		return filepath.Join(projectRoot, ".godot", "export_credentials.cfg"), nil
 
 	case Era41To42:
 		// Godot 4.1–4.2: embedded in presets file
-		return joinPath(projectRoot, "export_presets.cfg"), nil
+		return filepath.Join(projectRoot, "export_presets.cfg"), nil
 
 	case EraLegacy:
 		return "", fmt.Errorf("encryption key storage not supported for Godot %s", era)
@@ -91,16 +92,4 @@ func CredentialLineMarker(era Era) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown era: %s", era)
 	}
-}
-
-// Helper function for path joining
-func joinPath(parts ...string) string {
-	result := parts[0]
-	for _, part := range parts[1:] {
-		if result != "" && !strings.HasSuffix(result, "/") {
-			result += "/"
-		}
-		result += part
-	}
-	return result
 }
