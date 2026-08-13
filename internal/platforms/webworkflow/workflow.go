@@ -93,6 +93,8 @@ func buildEnv(workspace *internal.Workspace, hostTuple string, key string) map[s
 		filepath.Join(sdkRoot, "node", "20.18.0_64bit", "bin"),
 	}
 	env["PATH"] = strings.Join(append(paths, env["PATH"]), separator)
+	env["EMSDK"] = sdkRoot
+	env["EMSDK_ROOT"] = sdkRoot
 	env["EM_CONFIG"] = filepath.Join(sdkRoot, ".emscripten")
 	// em++.py (and emcc.py) do `import emcc` — the emscripten directory must be on
 	// PYTHONPATH so Python can find the sibling modules regardless of how the subprocess

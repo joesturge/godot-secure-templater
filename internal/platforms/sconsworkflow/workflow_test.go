@@ -152,6 +152,7 @@ func TestBuildCommand_InjectsPythonPathForSConsPackage(t *testing.T) {
 	assert.Equal(t, "-c", wrapper.Args[1], "BuildCommand should use a python -c bootstrap")
 	assert.Contains(t, wrapper.Args[2], "os.environ.get('PYTHONPATH'", "python bootstrap must inspect PYTHONPATH")
 	assert.Contains(t, wrapper.Args[2], "os.pathsep", "python bootstrap must split PYTHONPATH using the host path separator")
+	assert.Contains(t, wrapper.Args[2], "os.environ['PYTHONPATH']", "python bootstrap must re-export PYTHONPATH so child subprocesses inherit the Emscripten paths")
 	assert.Contains(t, wrapper.Args[2], "sys.path.insert(0, entry)", "python bootstrap must restore PYTHONPATH entries before startup")
 	assert.Contains(t, wrapper.Args[2], "runtime/scons", "python bootstrap must include the SCons runtime in sys.path")
 }

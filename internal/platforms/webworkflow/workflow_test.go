@@ -35,7 +35,7 @@ func TestBuildEnvIncludesEmscriptenInPythonPath(t *testing.T) {
 			ws := &internal.Workspace{Runtime: runtimeDir}
 			env := buildEnv(ws, tt.hostTuple, "test-key")
 
-			// THEN PYTHONPATH must include the emscripten directory so that em++.py can import emcc
+			// THEN PYTHONPATH and SDK metadata must include the emscripten directory so that em++.py can import emcc
 			pythonPath, ok := env["PYTHONPATH"]
 			assert.True(t, ok, "PYTHONPATH must be set in the web build environment")
 			parts := strings.Split(pythonPath, tt.separator)
@@ -47,6 +47,8 @@ func TestBuildEnvIncludesEmscriptenInPythonPath(t *testing.T) {
 				}
 			}
 			assert.True(t, found, "PYTHONPATH should contain the emscripten directory (%s), got: %s", emscriptenDir, pythonPath)
+			assert.Equal(t, sdkRoot, env["EMSDK"], "EMSDK should point at the extracted SDK root")
+			assert.Equal(t, sdkRoot, env["EMSDK_ROOT"], "EMSDK_ROOT should point at the extracted SDK root")
 		})
 	}
 }

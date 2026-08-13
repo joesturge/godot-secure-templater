@@ -617,9 +617,7 @@ func ensureSetuptoolsAvailable(pythonExe string) error {
 			}
 			return fmt.Errorf("setuptools still unavailable after bootstrap: %s", strings.TrimSpace(string(output)))
 		}
-		if output != nil && len(output) > 0 {
-			_ = output
-		}
+		_ = output
 	}
 
 	return fmt.Errorf("python %s is missing setuptools and bootstrap steps failed", pythonExe)

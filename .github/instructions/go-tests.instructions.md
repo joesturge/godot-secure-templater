@@ -41,6 +41,7 @@ func TestName(t *testing.T) {
 - Each subtest needs GIVEN/WHEN/THEN comments
 - Verify file permissions: `assert.Equal(t, os.FileMode(0600), info.Mode().Perm())`
 - Error codes: `assert.Equal(t, ExitCode, err.Code)`
+- Toolchain regressions should include a failing regression around the real environment shape: embedded Python layouts, versioned-only Python binaries, `.pth` site activation, and inherited `PYTHONPATH` when SCons is launched through `__main__.py`.
 
 ## Coverage
 - Target: ~85% per package
