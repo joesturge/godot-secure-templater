@@ -125,6 +125,37 @@ func VerifyCompileReadinessWithEnv(ctx *internal.RunContext, hostTuple string, p
 		if err := runProbe("zig version", exec.Command(zigExe, "version"), env, ""); err != nil {
 			return err
 		}
+	} else {
+		pathSep := string(os.PathListSeparator)
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(hostTuple)), "windows/") {
+			pathSep = ";"
+		}
+		if ccExe := envOverrides["CC"]; ccExe != "" {
+			resolvedCC, resolveErr := resolveExeFromEnvPath(ccExe, envOverrides["PATH"], pathSep)
+			if resolveErr != nil {
+				return &internal.Error{
+					Code:    internal.ExitBuildFailed,
+					Message: "Compile readiness check failed: cc not found",
+					Details: resolveErr.Error(),
+				}
+			}
+			if err := runProbe("cc version", exec.Command(resolvedCC, "--version"), env, ""); err != nil {
+				return err
+			}
+		}
+		if arExe := envOverrides["AR"]; arExe != "" {
+			resolvedAR, resolveErr := resolveExeFromEnvPath(arExe, envOverrides["PATH"], pathSep)
+			if resolveErr != nil {
+				return &internal.Error{
+					Code:    internal.ExitBuildFailed,
+					Message: "Compile readiness check failed: ar not found",
+					Details: resolveErr.Error(),
+				}
+			}
+			if err := runProbe("ar version", exec.Command(resolvedAR, "--version"), env, ""); err != nil {
+				return err
+			}
+		}
 	}
 
 	sconsVersion := BuildCommand(tools.PythonExe, tools.SConsExe, []string{"--version"}, ctx.Logger)
@@ -382,6 +413,28 @@ func pathHead(pathValue string, hostTuple string) string {
 		parts = parts[:4]
 	}
 	return strings.Join(parts, separator)
+}
+
+func resolveExeFromEnvPath(name string, envPath string, separator string) (string, error) {
+	if filepath.IsAbs(name) {
+		if _, err := os.Stat(name); err == nil {
+			return name, nil
+		}
+		return "", fmt.Errorf("compiler executable not found: %s", name)
+	}
+	exeNames := []string{name, name + ".exe"}
+	for _, dir := range strings.Split(envPath, separator) {
+		if dir == "" {
+			continue
+		}
+		for _, exeName := range exeNames {
+			candidate := filepath.Join(dir, exeName)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%q not found in PATH", name)
 }
 
 func usesZigCompiler(env map[string]string) bool {

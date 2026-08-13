@@ -167,3 +167,77 @@ func TestResolveZigExecutable_NestedLayout(t *testing.T) {
 	assert.NoError(t, err, "resolveZigExecutable should resolve nested runtime zig executable")
 	assert.Equal(t, zigPath, resolved, "resolveZigExecutable should return nested zig path")
 }
+
+func TestResolveExeFromEnvPath_FindsExeByName(t *testing.T) {
+	// GIVEN a bin directory with a gcc executable
+	binDir := t.TempDir()
+	gccPath := filepath.Join(binDir, "gcc")
+	err := os.WriteFile(gccPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "gcc executable should be creatable")
+
+	// WHEN resolving gcc from the env PATH
+	resolved, err := resolveExeFromEnvPath("gcc", binDir, ":")
+
+	// THEN it should return the gcc executable path
+	assert.NoError(t, err, "resolveExeFromEnvPath should find gcc in PATH")
+	assert.Equal(t, gccPath, resolved, "resolveExeFromEnvPath should return the correct gcc path")
+}
+
+func TestResolveExeFromEnvPath_FindsExeExtension(t *testing.T) {
+	// GIVEN a bin directory with a gcc.exe executable (Windows-style)
+	binDir := t.TempDir()
+	gccPath := filepath.Join(binDir, "gcc.exe")
+	err := os.WriteFile(gccPath, []byte(""), 0755)
+	assert.NoError(t, err, "gcc.exe executable should be creatable")
+
+	// WHEN resolving gcc from the env PATH using semicolon separator
+	resolved, err := resolveExeFromEnvPath("gcc", binDir, ";")
+
+	// THEN it should find gcc.exe when gcc is absent
+	assert.NoError(t, err, "resolveExeFromEnvPath should find gcc.exe in PATH")
+	assert.Equal(t, gccPath, resolved, "resolveExeFromEnvPath should return gcc.exe when gcc is absent")
+}
+
+func TestResolveExeFromEnvPath_ReturnsErrorWhenNotFound(t *testing.T) {
+	// GIVEN a bin directory without the requested executable
+	binDir := t.TempDir()
+
+	// WHEN resolving a missing executable
+	_, err := resolveExeFromEnvPath("ar", binDir, ":")
+
+	// THEN it should return an error
+	assert.Error(t, err, "resolveExeFromEnvPath should fail when executable is absent from PATH")
+}
+
+func TestResolveExeFromEnvPath_SearchesMultiplePathEntries(t *testing.T) {
+	// GIVEN two bin directories where ar is only in the second
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+	arPath := filepath.Join(dir2, "ar")
+	err := os.WriteFile(arPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "ar executable should be creatable")
+
+	envPath := dir1 + ":" + dir2
+
+	// WHEN resolving ar from the multi-entry env PATH
+	resolved, err := resolveExeFromEnvPath("ar", envPath, ":")
+
+	// THEN it should find ar in the second directory
+	assert.NoError(t, err, "resolveExeFromEnvPath should search all PATH entries")
+	assert.Equal(t, arPath, resolved, "resolveExeFromEnvPath should return ar from the second PATH entry")
+}
+
+func TestResolveExeFromEnvPath_AbsolutePathUsedDirectly(t *testing.T) {
+	// GIVEN an absolute executable path that exists on disk
+	dir := t.TempDir()
+	gccPath := filepath.Join(dir, "gcc")
+	err := os.WriteFile(gccPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "gcc executable should be creatable")
+
+	// WHEN resolving using an absolute path as the name
+	resolved, err := resolveExeFromEnvPath(gccPath, "", ":")
+
+	// THEN it should return the absolute path without searching PATH
+	assert.NoError(t, err, "resolveExeFromEnvPath should accept an absolute path directly")
+	assert.Equal(t, gccPath, resolved, "resolveExeFromEnvPath should return the absolute path unchanged")
+}
