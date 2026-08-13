@@ -563,6 +563,23 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 		}
 	}
 
+	if _, err := os.Stat(filepath.Join(sconsDir, "setup.py")); err != nil {
+		return &internal.Error{
+			Code:    internal.ExitGenericFailure,
+			Message: "SCons source not found for embedded installation",
+			Details: fmt.Sprintf("missing setup.py under %s: %v", sconsDir, err),
+		}
+	}
+
+	bootstrapErr := ensureSetuptoolsAvailable(pythonExe)
+	if bootstrapErr != nil {
+		return &internal.Error{
+			Code:    internal.ExitGenericFailure,
+			Message: "Failed to bootstrap setuptools for embedded Python",
+			Details: bootstrapErr.Error(),
+		}
+	}
+
 	// Run setup.py install from sconsDir
 	cmd := exec.Command(pythonExe, "setup.py", "install")
 	cmd.Dir = sconsDir
@@ -578,6 +595,34 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 	}
 
 	return nil
+}
+
+func ensureSetuptoolsAvailable(pythonExe string) error {
+	check := exec.Command(pythonExe, "-c", "import setuptools")
+	if _, err := check.CombinedOutput(); err == nil {
+		return nil
+	}
+
+	bootstrapTargets := [][]string{
+		{"-m", "ensurepip", "--upgrade"},
+		{"-m", "pip", "install", "--upgrade", "setuptools"},
+	}
+	for _, args := range bootstrapTargets {
+		cmd := exec.Command(pythonExe, args...)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			verify := exec.Command(pythonExe, "-c", "import setuptools")
+			if _, verifyErr := verify.CombinedOutput(); verifyErr == nil {
+				return nil
+			}
+			return fmt.Errorf("setuptools still unavailable after bootstrap: %s", strings.TrimSpace(string(output)))
+		}
+		if output != nil && len(output) > 0 {
+			_ = output
+		}
+	}
+
+	return fmt.Errorf("python %s is missing setuptools and bootstrap steps failed", pythonExe)
 }
 
 // enableSiteForEmbeddedPython patches any python*._pth files found in pythonDir to uncomment

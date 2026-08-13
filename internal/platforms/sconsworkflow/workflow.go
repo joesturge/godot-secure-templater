@@ -70,8 +70,8 @@ func BuildCommand(pythonExe string, sconsExe string, sconsArgs []string, logger 
 		sconsModuleDir := filepath.Dir(sconsExe)
 		sconsRuntimeDir := filepath.Dir(sconsModuleDir)
 		pythonCode := fmt.Sprintf(
-			"import sys; sys.path.insert(0, %q); exec(open(%q).read())",
-			sconsRuntimeDir, sconsExe,
+			"import os, sys; env_path = os.environ.get('PYTHONPATH', '');\nfor entry in env_path.split(os.pathsep):\n    if entry:\n        sys.path.insert(0, entry)\nif %q not in sys.path:\n    sys.path.insert(0, %q)\nexec(open(%q).read())",
+			sconsRuntimeDir, sconsRuntimeDir, sconsExe,
 		)
 		logger.Info("    Using python -c with sys.path injection")
 		return exec.Command(pythonExe, append([]string{"-c", pythonCode}, sconsArgs...)...)

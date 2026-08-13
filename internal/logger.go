@@ -37,4 +37,3 @@ func (l *SimpleLogger) Debug(msg string, args ...interface{}) {
 func (l *SimpleLogger) Printf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 }
-
