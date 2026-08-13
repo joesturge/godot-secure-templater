@@ -13,13 +13,16 @@ const hostTuple = "windows/amd64"
 
 func init() {
 	for _, profile := range targetprofiles.SConsHostTargetProfiles() {
-		if profile.TargetTuple != "windows/amd64" {
+		if profile.TargetTuple != "windows/amd64" && profile.TargetTuple != "web/wasm32" {
 			continue
 		}
 		platform.Register(platform.Definition{
 			HostTuple:   hostTuple,
 			TargetTuple: profile.TargetTuple,
 			Components: func(version string) ([]internal.Artifact, *internal.Error) {
+				if profile.TargetTuple == "web/wasm32" {
+					return webComponents(version), nil
+				}
 				return Components(version), nil
 			},
 			Compile: func(ctx *internal.RunContext, key string) *internal.Error {

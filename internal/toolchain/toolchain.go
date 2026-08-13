@@ -117,6 +117,15 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 			}
 		}
 
+		// Special handling for Python: enable PYTHONPATH support in the embedded distribution.
+		// The Windows embedded zip ships a python*._pth file that disables PYTHONPATH; without
+		// patching it, subprocesses like em++.py cannot import sibling modules such as emcc.
+		if art.Name == "python" {
+			if patchErr := enableSiteForEmbeddedPython(targetDir); patchErr != nil {
+				ctx.Logger.Warn("Failed to patch Python path config to enable PYTHONPATH: %v", patchErr)
+			}
+		}
+
 		ctx.Logger.Info("    ✓ Provisioned successfully")
 	}
 
@@ -554,9 +563,27 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 		}
 	}
 
+	if _, err := os.Stat(filepath.Join(sconsDir, "setup.py")); err != nil {
+		return &internal.Error{
+			Code:    internal.ExitGenericFailure,
+			Message: "SCons source not found for embedded installation",
+			Details: fmt.Sprintf("missing setup.py under %s: %v", sconsDir, err),
+		}
+	}
+
+	bootstrapErr := ensureSetuptoolsAvailable(pythonExe)
+	if bootstrapErr != nil {
+		return &internal.Error{
+			Code:    internal.ExitGenericFailure,
+			Message: "Failed to bootstrap setuptools for embedded Python",
+			Details: bootstrapErr.Error(),
+		}
+	}
+
 	// Run setup.py install from sconsDir
 	cmd := exec.Command(pythonExe, "setup.py", "install")
 	cmd.Dir = sconsDir
+	cmd.Env = embeddedPythonEnv(pythonExe)
 
 	// Capture output
 	output, err := cmd.CombinedOutput()
@@ -568,6 +595,73 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 		}
 	}
 
+	return nil
+}
+
+func ensureSetuptoolsAvailable(pythonExe string) error {
+	check := exec.Command(pythonExe, "-c", "import setuptools")
+	check.Env = embeddedPythonEnv(pythonExe)
+	if _, err := check.CombinedOutput(); err == nil {
+		return nil
+	}
+
+	bootstrapTargets := [][]string{
+		{"-m", "ensurepip", "--upgrade"},
+		{"-m", "pip", "install", "--upgrade", "setuptools"},
+	}
+	for _, args := range bootstrapTargets {
+		cmd := exec.Command(pythonExe, args...)
+		cmd.Env = embeddedPythonEnv(pythonExe)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			verify := exec.Command(pythonExe, "-c", "import setuptools")
+			verify.Env = embeddedPythonEnv(pythonExe)
+			if _, verifyErr := verify.CombinedOutput(); verifyErr == nil {
+				return nil
+			}
+			return fmt.Errorf("setuptools still unavailable after bootstrap: %s", strings.TrimSpace(string(output)))
+		}
+		_ = output
+	}
+
+	return fmt.Errorf("python %s is missing setuptools and bootstrap steps failed", pythonExe)
+}
+
+func embeddedPythonEnv(pythonExe string) []string {
+	path := filepath.Dir(pythonExe)
+	if systemPath := os.Getenv("PATH"); systemPath != "" {
+		path += string(os.PathListSeparator) + systemPath
+	}
+	return internal.SanitizedEnv(map[string]string{
+		"PATH":       path,
+		"PYTHONHOME": "",
+		"PYTHONPATH": "",
+	})
+}
+
+// enableSiteForEmbeddedPython patches any python*._pth files found in pythonDir to uncomment
+// "#import site", enabling PYTHONPATH support in the Windows embedded Python distribution.
+// Without this, the embedded Python ignores PYTHONPATH entirely, causing em++.py to fail with
+// "ModuleNotFoundError: No module named 'emcc'" when SCons invokes it as a subprocess.
+// This is a no-op if no ._pth files exist (e.g. on POSIX hosts).
+func enableSiteForEmbeddedPython(pythonDir string) error {
+	matches, err := filepath.Glob(filepath.Join(pythonDir, "python*._pth"))
+	if err != nil || len(matches) == 0 {
+		return nil
+	}
+	for _, pthFile := range matches {
+		data, err := os.ReadFile(pthFile)
+		if err != nil {
+			continue
+		}
+		patched := strings.ReplaceAll(string(data), "#import site", "import site")
+		if patched == string(data) {
+			continue
+		}
+		if writeErr := os.WriteFile(pthFile, []byte(patched), 0644); writeErr != nil {
+			return fmt.Errorf("failed to patch %s to enable PYTHONPATH: %w", pthFile, writeErr)
+		}
+	}
 	return nil
 }
 

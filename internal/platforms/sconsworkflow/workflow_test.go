@@ -3,6 +3,7 @@ package sconsworkflow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,6 +45,7 @@ func TestAdapterForHostTuple(t *testing.T) {
 
 func TestPosixHostBuildEnv(t *testing.T) {
 	// GIVEN a POSIX host adapter and workspace paths
+	t.Setenv("PATH", "/host/system/bin")
 	adapter := posixHostAdapter{}
 	workspace := &internal.Workspace{Runtime: filepath.Join("/tmp", "runtime")}
 
@@ -56,6 +58,10 @@ func TestPosixHostBuildEnv(t *testing.T) {
 		"POSIX PATH should include python/bin so the provisioned python binary is reachable")
 	assert.Contains(t, env["PATH"], filepath.Join("/tmp", "runtime", "bin"),
 		"POSIX PATH should include runtime/bin so the provisioned pkg-config stub is reachable")
+	assert.True(t, strings.HasPrefix(env["PATH"], filepath.Join("/tmp", "runtime", "bin")+":"),
+		"POSIX PATH should prioritise provisioned runtime tools")
+	assert.True(t, strings.HasSuffix(env["PATH"], ":/host/system/bin"),
+		"POSIX PATH should retain host system utilities after provisioned runtime tools")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "BuildEnv should include encryption key override")
 }
 
@@ -128,6 +134,33 @@ func TestResolvePythonExecutable_BinLayoutVersionedOnly(t *testing.T) {
 	// THEN it should find the versioned binary even without symlinks
 	assert.NoError(t, err, "resolvePythonExecutable should succeed when only python3.11 is present")
 	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/bin/python3.11 when symlinks are absent")
+}
+
+func TestBuildCommand_InjectsPythonPathForSConsPackage(t *testing.T) {
+	// GIVEN a packaged SCons module and a runtime PYTHONPATH that includes the emscripten SDK
+	oldValue := os.Getenv("PYTHONPATH")
+	empPath := filepath.Join("C:\\", "runtime", "emsdk", "upstream", "emscripten") + string(os.PathListSeparator) + filepath.Join("C:\\", "runtime", "scons")
+	err := os.Setenv("PYTHONPATH", empPath)
+	assert.NoError(t, err, "PYTHONPATH should be set for the test")
+	defer func() {
+		if oldValue == "" {
+			_ = os.Unsetenv("PYTHONPATH")
+			return
+		}
+		_ = os.Setenv("PYTHONPATH", oldValue)
+	}()
+
+	sconsMain := filepath.Join("C:\\", "runtime", "scons", "SCons", "__main__.py")
+	wrapper := BuildCommand("python.exe", sconsMain, []string{"--version"}, internal.NewSimpleLogger(false))
+
+	// WHEN bootstrapping SCons via the package __main__.py entry point
+	// THEN the generated python -c payload must preserve PYTHONPATH entries before SCons executes
+	assert.Equal(t, "-c", wrapper.Args[1], "BuildCommand should use a python -c bootstrap")
+	assert.Contains(t, wrapper.Args[2], "os.environ.get('PYTHONPATH'", "python bootstrap must inspect PYTHONPATH")
+	assert.Contains(t, wrapper.Args[2], "os.pathsep", "python bootstrap must split PYTHONPATH using the host path separator")
+	assert.Contains(t, wrapper.Args[2], "os.environ['PYTHONPATH']", "python bootstrap must re-export PYTHONPATH so child subprocesses inherit the Emscripten paths")
+	assert.Contains(t, wrapper.Args[2], "sys.path.insert(0, entry)", "python bootstrap must restore PYTHONPATH entries before startup")
+	assert.Contains(t, wrapper.Args[2], "runtime/scons", "python bootstrap must include the SCons runtime in sys.path")
 }
 
 func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {

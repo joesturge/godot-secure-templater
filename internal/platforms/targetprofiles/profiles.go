@@ -54,5 +54,16 @@ func SConsHostTargetProfiles() []SConsTargetProfile {
 			ReleaseSetting: ".gst/templates/linux_template_release.x86_64",
 			DebugSetting:   ".gst/templates/linux_template_debug.x86_64",
 		},
+		{
+			TargetTuple:    "web/wasm32",
+			SConsPlatform:  "web",
+			SourceDebug:    "godot.web.template_debug.wasm32.zip",
+			SourceRelease:  "godot.web.template_release.wasm32.zip",
+			DestinationFmt: "web_%s.zip",
+			PresetLabel:    "Web",
+			ReleaseSetting: ".gst/templates/web_template_release.zip",
+			DebugSetting:   ".gst/templates/web_template_debug.zip",
+			ExtraSConsArgs: []string{"threads=no"},
+		},
 	}
 }

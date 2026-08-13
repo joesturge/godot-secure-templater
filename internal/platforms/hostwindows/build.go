@@ -11,10 +11,14 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/platforms/sconsworkflow"
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
+	"github.com/joemi/godot-secure-templater/internal/platforms/webworkflow"
 )
 
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
+		if profile.TargetTuple == "web/wasm32" {
+			return webworkflow.BuildCommandForProfile(ctx, profile, hostTuple, target, key)
+		}
 		if err := ensureWindowsMingwPrefix(ctx.Workspace.Runtime); err != nil {
 			return nil, err
 		}
@@ -52,6 +56,9 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 }
 
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
+	if profile.TargetTuple == "web/wasm32" {
+		return webworkflow.VerifyCompileReadiness(ctx, profile, hostTuple)
+	}
 	if err := ensureWindowsMingwPrefix(ctx.Workspace.Runtime); err != nil {
 		return err
 	}
@@ -145,16 +152,5 @@ func hasBinDir(path string) bool {
 }
 
 func makeEnv(overrides map[string]string) []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, e := range env {
-		key := strings.SplitN(e, "=", 2)[0]
-		if _, ok := overrides[key]; !ok {
-			filtered = append(filtered, e)
-		}
-	}
-	for k, v := range overrides {
-		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
-	}
-	return filtered
+	return internal.SanitizedEnv(overrides)
 }

@@ -11,9 +11,13 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/platforms/sconsworkflow"
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
+	"github.com/joemi/godot-secure-templater/internal/platforms/webworkflow"
 )
 
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
+	if profile.TargetTuple == "web/wasm32" {
+		return webworkflow.VerifyCompileReadiness(ctx, profile, hostTuple)
+	}
 	compilerEnv, err := zigCompilerEnvForTarget(ctx.Workspace.Runtime, profile.TargetTuple)
 	if err != nil {
 		return err
@@ -23,6 +27,9 @@ func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SCo
 
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
+		if profile.TargetTuple == "web/wasm32" {
+			return webworkflow.BuildCommandForProfile(ctx, profile, hostTuple, target, key)
+		}
 		tools, err := sconsworkflow.ResolveRuntimeTools(ctx.Workspace, ctx.Logger)
 		if err != nil {
 			return nil, err
@@ -164,16 +171,5 @@ func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
 }
 
 func makeEnv(overrides map[string]string) []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, e := range env {
-		key := strings.SplitN(e, "=", 2)[0]
-		if _, ok := overrides[key]; !ok {
-			filtered = append(filtered, e)
-		}
-	}
-	for k, v := range overrides {
-		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
-	}
-	return filtered
+	return internal.SanitizedEnv(overrides)
 }

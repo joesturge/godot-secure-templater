@@ -12,5 +12,8 @@ applyTo: ".github/workflows/**"
 - Secrets: avoid printing raw keys; prefer file/stdin handoff for `SCRIPT_AES256_ENCRYPTION_KEY` where possible; mask secrets in logs.
 - Exit codes: rely on `internal/errors.go` contract; workflows should branch on codes (0 success, 4 version-resolution, 5 integrity/checksum, 6 disk, 7 build failed, 8 config injection, 9 unsupported, 10 lock held).
 - Lint & tests: workflows must run `go test ./...` and `golangci-lint run ./...` before producing artifacts.
+- Debug-first validation: when a toolchain or platform regression is suspected, prefer the smallest package-scoped validation first (`go test ./internal/platforms/sconsworkflow/... ./internal/toolchain/...` plus the matching `golangci-lint run` target) before expanding to the full repository suite.
+- Web build environment checks: validate the Emscripten SDK path setup (`PYTHONPATH` + emitted `emcc` importability) before considering the build failed for unrelated reasons.
+- Smoke-test hygiene: clear host compiler, Python, SCons, package-config, and SDK variables during integration smoke tests so CI starts from a deterministic environment.
 
 Keep this file minimal — add detailed CI examples to `docs/` when more than one concrete example is needed.

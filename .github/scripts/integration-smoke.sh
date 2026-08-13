@@ -40,6 +40,14 @@ if [[ "${sanitize_host_env}" == "true" ]]; then
 	unset AR || true
 	unset CFLAGS || true
 	unset CXXFLAGS || true
+	unset PYTHONHOME || true
+	unset PYTHONPATH || true
+	unset EMSDK || true
+	unset EMSDK_ROOT || true
+	unset EM_CONFIG || true
+	unset EM_CACHE || true
+	unset SCONSFLAGS || true
+	unset PKG_CONFIG_PATH || true
 fi
 
 log_file="${project_dir}/gst-integration.log"
@@ -61,7 +69,11 @@ fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
 required_compile_lines=25
 stability_window_seconds=10
 scons_invoked="false"
-compile_deadline=$((SECONDS + 300))
+compile_wait_seconds=300
+if [[ "${target_tuple}" == "web/wasm32" ]]; then
+	compile_wait_seconds=900
+fi
+compile_deadline=$((SECONDS + compile_wait_seconds))
 
 while kill -0 "${gst_pid}" 2>/dev/null; do
 	if [[ "${scons_invoked}" != "true" ]] && grep -Eq "${scons_invocation_regex}" "${log_file}"; then

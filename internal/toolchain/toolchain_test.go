@@ -16,6 +16,55 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
+func TestEnableSiteForEmbeddedPython_UncommentsSiteImport(t *testing.T) {
+	// GIVEN a Python directory containing a python311._pth file with #import site commented out
+	pythonDir := t.TempDir()
+	pthContent := "python311.zip\n.\n\n# Uncomment to run site.main() automatically\n#import site\n"
+	pthPath := filepath.Join(pythonDir, "python311._pth")
+	err := os.WriteFile(pthPath, []byte(pthContent), 0644)
+	assert.NoError(t, err, "._pth file should be writable")
+
+	// WHEN enabling site for the embedded Python installation
+	err = enableSiteForEmbeddedPython(pythonDir)
+	assert.NoError(t, err, "embedded Python ._pth patch should succeed")
+
+	// THEN the ._pth file should have import site uncommented so that PYTHONPATH is respected
+	got, readErr := os.ReadFile(pthPath)
+	assert.NoError(t, readErr, "._pth file should be readable after patching")
+	assert.Contains(t, string(got), "import site", "._pth should contain 'import site' after patching")
+	assert.NotContains(t, string(got), "#import site", "._pth should not contain the commented-out '#import site' after patching")
+}
+
+func TestEnableSiteForEmbeddedPython_NoopWhenAlreadyEnabled(t *testing.T) {
+	// GIVEN a Python directory with a ._pth file that already has import site enabled
+	pythonDir := t.TempDir()
+	pthContent := "python311.zip\n.\nimport site\n"
+	pthPath := filepath.Join(pythonDir, "python311._pth")
+	err := os.WriteFile(pthPath, []byte(pthContent), 0644)
+	assert.NoError(t, err, "._pth file should be writable")
+
+	// WHEN enabling site for the embedded Python installation
+	err = enableSiteForEmbeddedPython(pythonDir)
+	assert.NoError(t, err, "embedded Python ._pth patch should succeed")
+
+	// THEN the ._pth file should still have import site and be otherwise unchanged
+	got, readErr := os.ReadFile(pthPath)
+	assert.NoError(t, readErr, "._pth file should be readable after patching")
+	assert.Contains(t, string(got), "import site", "._pth should still contain 'import site'")
+}
+
+func TestEnableSiteForEmbeddedPython_NoopWhenNoPthFile(t *testing.T) {
+	// GIVEN a Python directory with no ._pth files (e.g. a POSIX build-standalone layout)
+	pythonDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(pythonDir, "python3"), []byte("#!/bin/sh\n"), 0755)
+	assert.NoError(t, err, "python stub should be writable")
+
+	// WHEN enabling site for the embedded Python installation (no ._pth present)
+	// THEN it should be a no-op without panicking or returning an error
+	err = enableSiteForEmbeddedPython(pythonDir)
+	assert.NoError(t, err, "embedded Python patch should be a no-op when no ._pth file exists")
+}
+
 func TestVerifyChecksum_Valid(t *testing.T) {
 	// GIVEN a file with known content
 	tempDir := t.TempDir()
@@ -201,6 +250,65 @@ func TestDownloadFile_NotFound(t *testing.T) {
 
 	// THEN it should error
 	assert.Error(t, err, "Should error on invalid/unreachable URL")
+}
+
+func TestInstallSconsToEmbeddedPython_BootstrapsSetuptools(t *testing.T) {
+	// GIVEN an embedded Python without setuptools installed
+	tempDir := t.TempDir()
+	binDir := filepath.Join(tempDir, "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/bin directory should be creatable")
+
+	ensurepipMarker := filepath.Join(tempDir, "ensurepip_invoked.marker")
+	installMarker := filepath.Join(tempDir, "setup_install_invoked.marker")
+	pythonExe := filepath.Join(binDir, "python3.11")
+	pythonScript := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"-c\" ] && [ \"$2\" = \"import setuptools\" ]; then\n" +
+		"  if [ -f \"" + ensurepipMarker + "\" ]; then\n" +
+		"    exit 0\n" +
+		"  fi\n" +
+		"  echo 'ModuleNotFoundError: No module named setuptools' >&2\n" +
+		"  exit 1\n" +
+		"fi\n" +
+		"if [ \"$1\" = \"-m\" ] && [ \"$2\" = \"ensurepip\" ] && [ \"$3\" = \"--upgrade\" ]; then\n" +
+		"  touch \"" + ensurepipMarker + "\"\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = \"-c\" ] && [ \"$2\" = \"import setuptools; print('ok')\" ]; then\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = \"setup.py\" ] && [ \"$2\" = \"install\" ]; then\n" +
+		"  if [ ! -f \"" + ensurepipMarker + "\" ]; then\n" +
+		"    echo 'ModuleNotFoundError: No module named setuptools' >&2\n" +
+		"    exit 1\n" +
+		"  fi\n" +
+		"  touch \"" + installMarker + "\"\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 0\n"
+	err = os.WriteFile(pythonExe, []byte(pythonScript), 0755)
+	assert.NoError(t, err, "python3.11 executable should be writable")
+
+	sconsDir := filepath.Join(tempDir, "scons")
+	err = os.Mkdir(sconsDir, 0755)
+	assert.NoError(t, err, "scons directory should be creatable")
+	err = os.WriteFile(filepath.Join(sconsDir, "setup.py"), []byte("# stub\n"), 0644)
+	assert.NoError(t, err, "setup.py stub should be writable")
+
+	ctx := &internal.RunContext{
+		Workspace: &internal.Workspace{Runtime: tempDir},
+		Logger:    internal.NewSimpleLogger(false),
+	}
+
+	// WHEN calling installSconsToEmbeddedPython without setuptools available
+	installErr := installSconsToEmbeddedPython(ctx, sconsDir)
+
+	// THEN the installer should bootstrap setuptools before running setup.py install
+	assert.Nil(t, installErr, "installSconsToEmbeddedPython should bootstrap setuptools before invoking setup.py install")
+	_, ensureErr := os.Stat(ensurepipMarker)
+	assert.NoError(t, ensureErr, "ensurepip should have been invoked for the embedded Python bootstrap")
+	_, installErrStat := os.Stat(installMarker)
+	assert.NoError(t, installErrStat, "setup.py install should have been invoked after setuptools bootstrap")
 }
 
 func TestInstallSconsToEmbeddedPython_VersionedPythonOnly(t *testing.T) {

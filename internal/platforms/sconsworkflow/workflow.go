@@ -70,8 +70,8 @@ func BuildCommand(pythonExe string, sconsExe string, sconsArgs []string, logger 
 		sconsModuleDir := filepath.Dir(sconsExe)
 		sconsRuntimeDir := filepath.Dir(sconsModuleDir)
 		pythonCode := fmt.Sprintf(
-			"import sys; sys.path.insert(0, %q); exec(open(%q).read())",
-			sconsRuntimeDir, sconsExe,
+			"import os, sys; env_path = os.environ.get('PYTHONPATH', ''); entries = [entry for entry in env_path.split(os.pathsep) if entry];\nfor entry in entries:\n    if entry not in sys.path:\n        sys.path.insert(0, entry)\nif %q not in sys.path:\n    sys.path.insert(0, %q)\nif %q not in entries:\n    entries.insert(0, %q)\nos.environ['PYTHONPATH'] = os.pathsep.join(entries)\nexec(open(%q).read())",
+			sconsRuntimeDir, sconsRuntimeDir, sconsRuntimeDir, sconsRuntimeDir, sconsExe,
 		)
 		logger.Info("    Using python -c with sys.path injection")
 		return exec.Command(pythonExe, append([]string{"-c", pythonCode}, sconsArgs...)...)
@@ -379,18 +379,7 @@ func findGodotSource(baseDir string) (string, error) {
 }
 
 func mergedEnv(overrides map[string]string) []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, e := range env {
-		key := strings.SplitN(e, "=", 2)[0]
-		if _, ok := overrides[key]; !ok {
-			filtered = append(filtered, e)
-		}
-	}
-	for k, v := range overrides {
-		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
-	}
-	return filtered
+	return internal.SanitizedEnv(overrides)
 }
 
 func pathHead(pathValue string, hostTuple string) string {
