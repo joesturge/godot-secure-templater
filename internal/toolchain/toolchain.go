@@ -403,6 +403,12 @@ func extractTarXZ(xzPath, targetDir string) error {
 	}
 
 	tr := tar.NewReader(xzr)
+	cleanTargetDir := filepath.Clean(targetDir)
+	type pendingSymlink struct {
+		path     string
+		linkname string
+	}
+	var symlinks []pendingSymlink
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -412,7 +418,6 @@ func extractTarXZ(xzPath, targetDir string) error {
 			return err
 		}
 
-		cleanTargetDir := filepath.Clean(targetDir)
 		fpath := filepath.Clean(filepath.Join(cleanTargetDir, header.Name))
 		if !strings.HasPrefix(fpath, cleanTargetDir+string(os.PathSeparator)) {
 			continue
@@ -440,13 +445,44 @@ func extractTarXZ(xzPath, targetDir string) error {
 			if err := outFile.Close(); err != nil {
 				return err
 			}
-		case tar.TypeSymlink, tar.TypeLink:
-			// Ignore links to avoid redirecting writes outside targetDir.
+		case tar.TypeSymlink:
+			if filepath.IsAbs(header.Linkname) {
+				continue
+			}
+			linkTarget := filepath.Clean(filepath.Join(filepath.Dir(fpath), header.Linkname))
+			if !pathWithinDirectory(cleanTargetDir, linkTarget) {
+				continue
+			}
+			symlinks = append(symlinks, pendingSymlink{path: fpath, linkname: header.Linkname})
+		case tar.TypeLink:
 			continue
 		}
 	}
 
+	for _, symlink := range symlinks {
+		linkTarget := filepath.Clean(filepath.Join(filepath.Dir(symlink.path), symlink.linkname))
+		resolvedTarget, err := filepath.EvalSymlinks(linkTarget)
+		if err != nil || !pathWithinDirectory(cleanTargetDir, resolvedTarget) {
+			continue
+		}
+		if _, err := os.Lstat(symlink.path); err == nil {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(symlink.path), os.ModePerm); err != nil {
+			return err
+		}
+		if err := os.Symlink(symlink.linkname, symlink.path); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func pathWithinDirectory(directory string, path string) bool {
+	cleanDirectory := filepath.Clean(directory)
+	cleanPath := filepath.Clean(path)
+	return cleanPath != cleanDirectory && strings.HasPrefix(cleanPath, cleanDirectory+string(os.PathSeparator))
 }
 
 // VerifyChecksum verifies a file's SHA256 against an expected value.
