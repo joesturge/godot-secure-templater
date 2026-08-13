@@ -61,7 +61,11 @@ fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
 required_compile_lines=25
 stability_window_seconds=10
 scons_invoked="false"
-compile_deadline=$((SECONDS + 300))
+compile_wait_seconds=300
+if [[ "${target_tuple}" == "web/wasm32" ]]; then
+	compile_wait_seconds=900
+fi
+compile_deadline=$((SECONDS + compile_wait_seconds))
 
 while kill -0 "${gst_pid}" 2>/dev/null; do
 	if [[ "${scons_invoked}" != "true" ]] && grep -Eq "${scons_invocation_regex}" "${log_file}"; then

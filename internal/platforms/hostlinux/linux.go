@@ -13,7 +13,7 @@ const hostTuple = "linux/amd64"
 
 func init() {
 	for _, profile := range targetprofiles.SConsHostTargetProfiles() {
-		if profile.TargetTuple != "linux/amd64" && profile.TargetTuple != "windows/amd64" {
+		if profile.TargetTuple != "linux/amd64" && profile.TargetTuple != "windows/amd64" && profile.TargetTuple != "web/wasm32" {
 			continue
 		}
 		platform.Register(platform.Definition{
@@ -22,6 +22,9 @@ func init() {
 			Components: func(version string) ([]internal.Artifact, *internal.Error) {
 				if profile.TargetTuple == "windows/amd64" {
 					return windowsCrossComponents(version), nil
+				}
+				if profile.TargetTuple == "web/wasm32" {
+					return webComponents(version), nil
 				}
 				return Components(version), nil
 			},

@@ -101,3 +101,16 @@ func TestLinuxPluginWindowsTargetComponentsUseMinGW(t *testing.T) {
 	assert.True(t, names["mingw"], "Windows cross-compilation should include a MinGW toolchain")
 	assert.False(t, names["zig"], "Windows cross-compilation should not rely on Zig")
 }
+
+func TestLinuxPluginRegistersWebTargetDefinition(t *testing.T) {
+	// GIVEN the Linux host plugin
+
+	// WHEN looking up the Linux-host Web-target tuple pair
+	def, ok := platform.LookupHostTarget("linux/amd64", "web/wasm32")
+
+	// THEN the registry should expose Web templates from Linux
+	assert.True(t, ok, "Linux plugin should register a linux/amd64 -> web/wasm32 tuple definition")
+	assert.Equal(t, "web/wasm32", def.TargetTuple, "Linux plugin should target web/wasm32")
+	assert.NotNil(t, def.Components, "Linux Web definition should provide components")
+	assert.NotNil(t, def.Compile, "Linux Web definition should provide a compiler")
+}

@@ -11,10 +11,14 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/builder"
 	"github.com/joemi/godot-secure-templater/internal/platforms/sconsworkflow"
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
+	"github.com/joemi/godot-secure-templater/internal/platforms/webworkflow"
 )
 
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
+		if profile.TargetTuple == "web/wasm32" {
+			return webworkflow.BuildCommandForProfile(ctx, profile, hostTuple, target, key)
+		}
 		if err := ensureWindowsMingwPrefix(ctx.Workspace.Runtime); err != nil {
 			return nil, err
 		}
@@ -52,6 +56,9 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 }
 
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
+	if profile.TargetTuple == "web/wasm32" {
+		return webworkflow.VerifyCompileReadiness(ctx, profile, hostTuple)
+	}
 	if err := ensureWindowsMingwPrefix(ctx.Workspace.Runtime); err != nil {
 		return err
 	}

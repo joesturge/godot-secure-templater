@@ -99,3 +99,16 @@ func TestWindowsHostLinuxTargetNotRegistered(t *testing.T) {
 	// THEN the registry should not advertise linux as supported on a Windows host yet
 	assert.False(t, ok, "Windows plugin should not register a windows/amd64 -> linux/amd64 tuple definition yet")
 }
+
+func TestWindowsPluginRegistersWebTargetDefinition(t *testing.T) {
+	// GIVEN the Windows host plugin
+
+	// WHEN looking up the Windows-host Web-target tuple pair
+	def, ok := platform.LookupHostTarget("windows/amd64", "web/wasm32")
+
+	// THEN the registry should expose Web templates from Windows
+	assert.True(t, ok, "Windows plugin should register a windows/amd64 -> web/wasm32 tuple definition")
+	assert.Equal(t, "web/wasm32", def.TargetTuple, "Windows plugin should target web/wasm32")
+	assert.NotNil(t, def.Components, "Windows Web definition should provide components")
+	assert.NotNil(t, def.Compile, "Windows Web definition should provide a compiler")
+}
