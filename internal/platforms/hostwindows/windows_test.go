@@ -49,7 +49,7 @@ func TestWindowsPluginComponents(t *testing.T) {
 		names[c.Name] = true
 	}
 	assert.True(t, names["python"], "Windows component list should include python artifact")
-	assert.True(t, names["zig"], "Windows component list should include zig artifact")
+	assert.True(t, names["mingw"], "Windows component list should include mingw artifact")
 	assert.True(t, names["scons"], "Windows component list should include scons artifact")
 	assert.True(t, names["godot_source"], "Windows component list should include godot_source artifact")
 

@@ -134,7 +134,7 @@ if [[ "${mode}" == "compile" ]]; then
 	# Post-compile-smoke checks: toolchain provisioned, no completed artefacts.
 	test -d ".gst/runtime/python"
 	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/zig"
+		test -d ".gst/runtime/mingw"
 	else
 		test -d ".gst/runtime/zig"
 	fi
@@ -168,7 +168,7 @@ else
 
 	test -d ".gst/runtime/python"
 	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/zig"
+		test -d ".gst/runtime/mingw"
 	else
 		test -d ".gst/runtime/zig"
 	fi

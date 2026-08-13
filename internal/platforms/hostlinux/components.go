@@ -17,6 +17,15 @@ const pkgConfigStub = `#!/bin/sh
 # Provisioned pkg-config stub – part of the gst toolchain.
 # Reports all packages as not found so that Godot's linuxbsd SCons feature
 # checks disable optional system integrations for a self-contained Zig build.
+if [ "$1" = "--version" ]; then
+	echo "0.0.0"
+	exit 0
+fi
+
+if [ "$1" = "--help" ]; then
+	exit 0
+fi
+
 exit 1
 `
 
