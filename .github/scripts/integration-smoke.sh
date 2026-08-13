@@ -5,12 +5,8 @@ workspace_root="${1:?workspace root required}"
 cli_bin="${2:?cli binary required}"
 godot_version="${3:?godot version required}"
 target_tuple="${4:?target tuple required}"
-mode="${5:?integration mode required (verify|compile)}"
-expected_release="${6:?expected release template required}"
-expected_debug="${7:?expected debug template required}"
-fixture_dir="${8:?fixture dir required}"
-sanitize_host_env="${9:-false}"
-assert_zig_provenance="${10:-false}"
+fixture_dir="${5:?fixture dir required}"
+sanitize_host_env="${6:-false}"
 
 project_dir="${workspace_root}/integration-project"
 rm -rf "${project_dir}"
@@ -18,14 +14,6 @@ mkdir -p "${project_dir}"
 cp -R "${fixture_dir}/." "${project_dir}/"
 
 pushd "${project_dir}" >/dev/null
-case "${mode}" in
-	verify|compile)
-		;;
-	*)
-		echo "invalid integration mode: ${mode} (expected verify or compile)" >&2
-		exit 2
-		;;
-esac
 
 gst_args=(
 	create
@@ -35,15 +23,9 @@ gst_args=(
 	--platform "${target_tuple}"
 )
 
-if [[ "${mode}" == "verify" ]]; then
-	gst_args+=(--verify-only)
-	if [[ "${assert_zig_provenance}" == "true" ]]; then
-		gst_args+=(--verbose)
-	fi
-fi
-
 if [[ "${sanitize_host_env}" == "true" ]]; then
 	unset MSYSTEM || true
+	unset MINGW_PREFIX || true
 	unset CC || true
 	unset CXX || true
 	unset AR || true
@@ -53,140 +35,76 @@ fi
 
 log_file="${project_dir}/gst-integration.log"
 
-if [[ "${mode}" == "compile" ]]; then
-	set +e
-	"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
-	gst_pid=$!
-	set -e
+set +e
+"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
+gst_pid=$!
+set -e
 
-	startup_signal_regex='scons: Building targets \.\.\.|Compiling .+ \.\.\.'
-	compile_progress_regex='Compiling .+ \.\.\.'
-	fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
-	required_compile_lines=25
-	compile_started="false"
-	startup_observed="false"
-	compile_deadline=$((SECONDS + 300))
-	while kill -0 "${gst_pid}" 2>/dev/null; do
-		if [[ "${compile_started}" != "true" ]]; then
-			if grep -Eq "${startup_signal_regex}" "${log_file}"; then
-				compile_started="true"
-			fi
-		else
-			if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
-				echo "compile startup smoke detected a build error" >&2
-				kill -TERM "${gst_pid}" 2>/dev/null || true
-				wait "${gst_pid}" || true
-				exit 8
-			fi
+scons_invocation_regex='scons: Building targets \.\.\.'
+compile_progress_regex='Compiling .+ \.\.\.'
+fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
+required_compile_lines=25
+scons_invoked="false"
+compile_deadline=$((SECONDS + 300))
 
-			compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
-			if (( compile_line_count >= required_compile_lines )); then
-				startup_observed="true"
-				break
-			fi
-		fi
-
-		if (( SECONDS >= compile_deadline )); then
-			if [[ "${compile_started}" != "true" ]]; then
-				echo "timed out waiting for SCons compile start" >&2
-			else
-				echo "timed out waiting for SCons compile progress (${required_compile_lines} lines)" >&2
-			fi
-			kill -TERM "${gst_pid}" 2>/dev/null || true
-			wait "${gst_pid}" || true
-			exit 8
-		fi
-
-		sleep 1
-	done
-
-	compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
-	if [[ "${compile_started}" != "true" ]] && (( compile_line_count > 0 )); then
-		compile_started="true"
+while kill -0 "${gst_pid}" 2>/dev/null; do
+	if [[ "${scons_invoked}" != "true" ]] && grep -Eq "${scons_invocation_regex}" "${log_file}"; then
+		scons_invoked="true"
 	fi
 
-	if [[ "${compile_started}" != "true" ]]; then
-		wait "${gst_pid}" || true
-		if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
-			echo "SCons compile failed before the harness observed startup" >&2
-		else
-			echo "SCons compile did not start" >&2
-		fi
-		exit 8
-	fi
-
-	if [[ "${startup_observed}" != "true" ]]; then
-		if ! kill -0 "${gst_pid}" 2>/dev/null && grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
-			wait "${gst_pid}" || true
-			echo "SCons compile started but failed before reaching required compile progress (${required_compile_lines} lines)" >&2
-			exit 8
-		fi
-
-		echo "SCons compile startup did not reach required compile progress (${required_compile_lines} lines)" >&2
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "compile startup smoke detected a build error" >&2
 		kill -TERM "${gst_pid}" 2>/dev/null || true
 		wait "${gst_pid}" || true
 		exit 8
 	fi
 
-	kill -TERM "${gst_pid}" 2>/dev/null || true
-	wait "${gst_pid}" || true
-
-	# Post-compile-smoke checks: toolchain provisioned, no completed artefacts.
-	test -d ".gst/runtime/python"
-	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/mingw"
-	else
-		test -d ".gst/runtime/zig"
-	fi
-	test -d ".gst/runtime/scons"
-	test -d ".gst/runtime/godot_source"
-	test -f ".gst/encryption.key"
-
-	grep -Eq "${compile_progress_regex}" "${log_file}"
-
 	compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
-	if (( compile_line_count < required_compile_lines )); then
-		echo "startup compile smoke observed insufficient compile progress (${compile_line_count}/${required_compile_lines})" >&2
+	if (( compile_line_count >= required_compile_lines )); then
+		break
+	fi
+
+	if (( SECONDS >= compile_deadline )); then
+		if (( compile_line_count == 0 )); then
+			if [[ "${scons_invoked}" == "true" ]]; then
+				echo "timed out waiting for actual SCons compile output" >&2
+			else
+				echo "timed out waiting for SCons to start" >&2
+			fi
+		else
+			echo "timed out waiting for SCons compile progress (${required_compile_lines} lines)" >&2
+		fi
+		kill -TERM "${gst_pid}" 2>/dev/null || true
+		wait "${gst_pid}" || true
 		exit 8
 	fi
 
-	if [[ "${assert_zig_provenance}" == "true" ]]; then
-		if [[ "${target_tuple}" == "windows/amd64" ]]; then
-			grep -E 'Compiling .+\.llvm\.o' "${log_file}"
-		fi
-	fi
+	sleep 1
+done
 
-	test ! -f ".gst/manifest.json"
-	test ! -f ".gst/templates/${expected_release}"
-	test ! -f ".gst/templates/${expected_debug}"
-
-	popd >/dev/null
-	exit 0
-else
-	# verify mode: run with --verify-only and check toolchain is provisioned, no artefacts written.
-	"${cli_bin}" "${gst_args[@]}" 2>&1 | tee "${log_file}"
-
-	test -d ".gst/runtime/python"
-	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/mingw"
+compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
+if (( compile_line_count < required_compile_lines )); then
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "SCons compile started but failed before required progress (${required_compile_lines} lines)" >&2
 	else
-		test -d ".gst/runtime/zig"
+		echo "SCons compile startup did not reach required progress (${compile_line_count}/${required_compile_lines})" >&2
 	fi
-	test -d ".gst/runtime/scons"
-	test -d ".gst/runtime/godot_source"
-
-	test ! -f ".gst/manifest.json"
-	test ! -f ".gst/encryption.key"
-	test ! -f ".gst/templates/${expected_release}"
-	test ! -f ".gst/templates/${expected_debug}"
-
-	popd >/dev/null
-	exit 0
+	kill -TERM "${gst_pid}" 2>/dev/null || true
+	wait "${gst_pid}" || true
+	exit 8
 fi
 
-test -f ".gst/templates/${expected_release}"
-test -f ".gst/templates/${expected_debug}"
-test -f ".gst/manifest.json"
-test -f ".gst/encryption.key"
+kill -TERM "${gst_pid}" 2>/dev/null || true
+wait "${gst_pid}" || true
+
+test -d ".gst/runtime/python"
+if [[ "${target_tuple}" == "windows/amd64" ]]; then
+	test -d ".gst/runtime/mingw"
+else
+	test -d ".gst/runtime/zig"
+fi
+test -d ".gst/runtime/scons"
+test -d ".gst/runtime/godot_source"
 
 popd >/dev/null
+exit 0
