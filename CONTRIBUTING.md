@@ -12,7 +12,7 @@ This guide covers the current workflow, expectations, and quality bar for this r
 
 Prerequisites:
 
-- Go 1.21+
+- Go 1.25.0+
 - Git
 
 Build locally:

@@ -110,16 +110,12 @@ type RunContext struct {
     ProjectRoot   string          // absolute; dir containing project.godot
     Workspace     Workspace       // resolved .gst/ paths
     Godot         ResolvedVersion // §4
-    Platform      PlatformID      // "windows" in Slice 0; registry key later
-    Flags         Flags           // parsed CLI flags (§11)
-    Interactive   bool            // false in CI [Slice 3]
+    Flags         Flags           // parsed CLI flags (§11), including Platform and Interactive
     Logger        Logger          // structured; JSON sink optional [Slice 3]
-    Clock         func() time.Time
-    HTTP          Doer            // injectable for tests
 }
 ```
-Everything nondeterministic (time, network, filesystem root) is injected so the pipeline is
-fully testable (§16).
+Time and HTTP injection for the version-resolution and toolchain-download stages are handled
+locally within those subsystems rather than threaded through `RunContext`.
 
 ---
 
@@ -141,8 +137,8 @@ fully testable (§16).
 │   │   ├── scons/
 │   │   └── godot_source/<version>/
 │   ├── templates/
-│   │   ├── windows_release.exe
-│   │   └── windows_debug.exe
+│   │   ├── windows_template_release.exe
+│   │   └── windows_template_debug.exe
 │   ├── logs/<timestamp>-<stage>.log
 │   ├── manifest.json                      # [Slice 1]
 │   ├── .lock                              # run lock (§12)
@@ -209,9 +205,9 @@ type Resolver interface {
    the reported minor line matches; otherwise defers.
 3. **`LatestPatchResolver` `[Slice 1]`** — queries the Godot GitHub Releases API for the newest
    stable tag on the minor line. Concerns handled:
-   * Rate limiting: unauthenticated 60/hr shared across a CI egress IP → supports
-     `GITHUB_TOKEN`/`--github-token`; caches the API response under `runtime/` keyed by minor line
-     with a short TTL.
+   * Rate limiting: unauthenticated 60/hr shared across a CI egress IP. The resolver caches the API
+     response on disk keyed by minor line with a 6-hour TTL; an optional auth token field exists on
+     the strategy for higher rate limits but is not yet exposed via a CLI flag.
    * Offline/API failure → returns a **hard** error (specific: `ErrVersionAPIUnreachable`), not a
      silent guess.
    * Determinism caveat: result is time-dependent. The chosen patch is **always** written to the
@@ -344,8 +340,9 @@ Headless SCons, once per target variant:
 scons platform=windows target=template_release  <arch/flags>
 scons platform=windows target=template_debug    <arch/flags>
 ```
-Artifacts are moved into `templates/` with the canonical namespaced names
-(`windows_release.exe`, `windows_debug.exe`).
+Artifacts are moved into `templates/` with canonical per-target namespaced names, e.g.
+`windows_template_release.exe`/`windows_template_debug.exe` on Windows and
+`linux_template_release.x86_64`/`linux_template_debug.x86_64` on Linux.
 
 ### 7.3 Progress reporting
 * **Slice 0:** stream raw SCons stdout/stderr to the terminal and to `logs/`.
@@ -419,18 +416,25 @@ type CredentialWriter interface {
 ### 9.1 Schema (`manifest.json`)
 ```json
 {
-  "schemaVersion": 1,
-  "godot":     { "minor": "4.3", "patch": "4.3.2", "method": "local_editor", "source": "godot --version" },
-  "platform":  "windows",
-  "toolchain": { "mingw": "sha256:…", "python": "sha256:…", "scons": "sha256:…", "godotSource": "sha256:…" },
-  "toolVersion": "gst 0.3.1",
-  "config":    { "encryptionKeyTarget": "export_credentials.cfg", "targets": ["release","debug"] },
-  "build":     { "startedAt": "…", "finishedAt": "…", "status": "success" },
-  "artifacts": { "windows_release.exe": "sha256:…", "windows_debug.exe": "sha256:…" }
+  "version": 1,
+  "platforms": [
+    {
+      "godot_version": "4.3.2",
+      "version_resolution_method": "local-editor",
+      "platform": "windows",
+      "toolchain_checksums": { "python": "sha256:…", "scons": "sha256:…", "zig": "sha256:…" },
+      "tool_version": "dev",
+      "timestamp": "…",
+      "success": true,
+      "template_release_hash": "sha256:…",
+      "template_debug_hash": "sha256:…"
+    }
+  ]
 }
 ```
-`platform` and the toolchain map are present **from day one** even though Slice 1 only writes
-`"windows"`, so caching/idempotency generalize to multi-platform without a schema change.
+The file holds one entry per target platform under `platforms`, so caching/idempotency generalize
+to multi-platform without a schema change. `version` defaults to `1` when reading older files that
+predate the explicit schema version.
 
 ### 9.2 The build fingerprint (idempotency/cache key)
 Critically, the key includes **more than the Godot version**:
@@ -463,38 +467,35 @@ Slice 0/1 already isolated platform work behind matching function signatures (§
 an **extraction**, not a rewrite.
 
 ### 10.2 Registry
+Implemented in `internal/platform` as a registry keyed by exact **host/target tuple pair**
+(e.g. `windows/amd64 -> windows/amd64`, `linux/amd64 -> linux/amd64`), not a single platform id:
 ```go
-type PlatformID string
-
-type Platform struct {
-    ID            PlatformID
-    SconsPlatform string          // "windows", "linuxbsd", "web", …
-    ArtifactNames func(target string) string
-    Provisioner   Provisioner
-    Builder       EnvironmentBuilder
-    Hosts         []HostID        // hosts this target can be built from
+type Definition struct {
+    HostTuple        string
+    TargetTuple      string
+    Components       func(version string) ([]internal.Artifact, *internal.Error)
+    Compile          func(ctx *internal.RunContext, key string) *internal.Error
+    Verify           func(ctx *internal.RunContext) *internal.Error
+    ArtifactPaths    func(workspace *internal.Workspace) (releasePath string, debugPath string)
+    SuccessNextSteps func() []string
 }
 
 // Self-registration, database/sql-style:
-func Register(p Platform)         // called from internal/platforms/<name>/init()
-func Lookup(id PlatformID) (Platform, bool)
+func Register(def Definition)                                       // called from internal/platforms/<name>/init()
+func LookupHostTarget(hostTuple, targetTuple string) (Definition, bool)
+func IsTargetRegistered(targetTuple string) bool
+func DetectHostTuple() string                                       // runtime.GOOS/runtime.GOARCH
 ```
 Core CLI code never imports a platform package directly; it only talks to the registry. Platform
-packages are blank-imported to trigger `init()`.
+packages (`internal/platforms/hostwindows`, `internal/platforms/hostlinux`) are blank-imported to
+trigger `init()`, each registering one or more host/target tuple pairs.
 
-### 10.3 Interfaces
-```go
-type Provisioner interface {
-    // Resolve + download + checksum-verify + extract this target's toolchain.
-    Components(v ResolvedVersion) ([]Artifact, error)
-    // Verification is a shared step provided by the framework, not reimplemented per plugin.
-}
-
-type EnvironmentBuilder interface {
-    Env(ctx *RunContext) (map[string]string, error) // isolated env incl. key handoff
-    Invoke(ctx *RunContext, target BuildTarget) error // SCons with correct platform= + flags
-}
-```
+### 10.3 Callbacks, not separate interfaces
+Rather than distinct `Provisioner`/`EnvironmentBuilder` interfaces, each `Definition` carries plain
+function fields for component resolution, compilation, verification, artifact paths, and
+post-build guidance. Checksum verification and runtime tool resolution are shared helpers
+(`internal/toolchain`, `internal/platforms/sconsworkflow`) that every platform's callbacks call into,
+rather than being reimplemented per plugin.
 
 ### 10.4 Toolchain reality per target (why `Provisioner` is not "a C++ cross-compiler")
 | Target | Toolchain | Notes |
@@ -530,17 +531,20 @@ target needs handling beyond the generic path. **No changes** to `cmd/`, `intern
 | `list-platforms` | 4+ | Introspect the registry. |
 
 ### 11.2 Flags
-| Flag | Slice | Effect |
+| Flag | Status | Effect |
 |---|---|---|
-| `--godot-version=X.Y.Z` | 0 (required), 1 (optional override) | Pins the version; bypasses inference. |
-| `--platform=<id>` | 0 (hard-wired `windows`), 3 (registry) | Selects the target plugin. |
-| `--keep-runtime` | 0 (accepted no-op), 1 (active) | Skip pruning of `runtime/`. |
-| `--force-rebuild` | 1 | Ignore idempotency, rebuild. |
-| `--regenerate-key` / `--force` | 1 | Regenerate the AES key (guarded). |
-| `--godot-editor-path=<path>` | 1 | Point at a specific editor for resolution. |
-| `--github-token=<tok>` | 1 | Authenticated Releases API calls. |
-| `--non-interactive` / `--yes` | 2 | Disable all prompts; fail fast instead. |
-| `--json` | 2 | Structured event output. |
+| `--godot-version=X.Y.Z` | Implemented | Pins the version; bypasses inference. |
+| `--platform=<tuple>` | Implemented | Target host/target tuple (e.g. `windows/amd64`, `linux/amd64`); defaults to the detected host tuple. |
+| `--godot-editor-path=<path>` | Implemented | Point at a specific editor for local version resolution. |
+| `--keep-runtime` | Implemented | Skip pruning of `runtime/`. |
+| `--force-rebuild` | Implemented | Ignore idempotency, rebuild. |
+| `--verify-only` | Implemented | Provision + verify compile readiness (tool checks, SCons dry-run) without compiling, writing the key, or updating the manifest. |
+| `--regenerate-key` | Implemented | Regenerate the AES key (requires confirmation unless `--force`). |
+| `--force` | Implemented | Skip all confirmation prompts (for automation/CI); not limited to key regeneration. |
+| `--verbose` | Implemented | Verbose logging output. |
+| `--non-interactive` / `--yes` | `[Slice 3]` not yet built | Disable all prompts; fail fast instead. |
+| `--json` | `[Slice 3]` not yet built | Structured event output. |
+| `--github-token=<tok>` | Not yet built | `GitHubAPIStrategy` has an unexposed `AuthToken` field for higher rate limits; no CLI flag wires it yet. |
 
 ### 11.3 Exit codes (stable contract for CI `[Slice 3]`)
 | Code | Meaning |
@@ -595,7 +599,7 @@ crash mid-write cannot truncate or corrupt the original.
 | `ErrNotGodotProject` | 3 | "No `project.godot` found in <dir>. Run this from your Godot project root." |
 | `ErrMinorMismatch` | 3 | "Project targets Godot 4.3 but `--godot-version=4.4.1` is on a different minor line." |
 | `ErrVersionUnresolved` | 4 | "Could not determine the Godot patch version. Pass `--godot-version=X.Y.Z`." |
-| `ErrVersionAPIUnreachable` | 4 | "GitHub Releases API unreachable (offline or rate-limited). Pass `--godot-version` or `--github-token`." |
+| `ErrVersionAPIUnreachable` | 4 | "GitHub Releases API unreachable (offline or rate-limited). Pass `--godot-version`." |
 | `ErrChecksumMismatch` | 5 | "Integrity check failed for `mingw` (expected …, got …). Aborting; toolchain may be tampered." |
 | `ErrInsufficientDisk` | 6 | "Need ~<N> GB free on <volume>, found <M> GB." |
 | `ErrBuildFailed` | 7 | "SCons build failed at stage <stage>. See `logs/<file>`. Likely cause: <hint>." |

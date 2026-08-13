@@ -103,8 +103,8 @@ MyGame/
 │   ├── runtime/                     <-- Toolchain + Godot source (kept in Slice 0; pruning is Slice 1)
 │   │   ├── python/  mingw/  scons/  godot_source/
 │   ├── templates/
-│   │   ├── windows_release.exe
-│   │   └── windows_debug.exe
+│   │   ├── windows_template_release.exe
+│   │   └── windows_template_debug.exe
 │   ├── logs/
 │   ├── .lock                        <-- Run lock (§4.3)
 │   └── encryption.key               <-- AES-256 key, owner-only perms (§4.4)
