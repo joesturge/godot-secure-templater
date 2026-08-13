@@ -33,6 +33,7 @@ secure (encrypted) Godot export templates natively inside a user's project direc
 
 Instead of manually installing a C++ toolchain, Python, SCons, and the Godot source tree,
 this tool handles everything in an isolated .gst/ workspace.`,
+		SilenceUsage: true,
 	}
 
 	createCmd = &cobra.Command{

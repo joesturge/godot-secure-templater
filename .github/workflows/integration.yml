@@ -74,16 +74,6 @@ jobs:
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o "dist/gst${{ matrix.binary_ext }}" ./cmd/gst
 
       - name: Run integration smoke test
-        if: ${{ matrix.smoke_shell == 'bash' }}
-        env:
-          GST_GODOT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}
+        shell: ${{ matrix.smoke_shell }}
         run: |
-          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "$GST_GODOT_VERSION" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"
-
-      - name: Run integration smoke test (PowerShell matrix)
-        if: ${{ matrix.smoke_shell == 'pwsh' }}
-        shell: pwsh
-        env:
-          GST_GODOT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}
-        run: |
-          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "$env:GST_GODOT_VERSION" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"
+          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"

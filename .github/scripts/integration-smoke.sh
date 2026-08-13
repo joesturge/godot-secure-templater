@@ -44,8 +44,13 @@ fi
 log_file="${project_dir}/gst-integration.log"
 : > "${log_file}"
 
+print_failure_context() {
+	echo "integration smoke failed; recent gst log output:" >&2
+	tail -n 80 "${log_file}" >&2 || true
+}
+
 set +e
-"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
+"${cli_bin}" "${gst_args[@]}" > "${log_file}" 2>&1 &
 gst_pid=$!
 set -e
 
@@ -53,6 +58,7 @@ scons_invocation_regex='scons: Building targets \.\.\.'
 compile_progress_regex='Compiling .+ \.\.\.'
 fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
 required_compile_lines=25
+stability_window_seconds=10
 scons_invoked="false"
 compile_deadline=$((SECONDS + 300))
 
@@ -65,6 +71,7 @@ while kill -0 "${gst_pid}" 2>/dev/null; do
 		echo "compile startup smoke detected a build error" >&2
 		kill -TERM "${gst_pid}" 2>/dev/null || true
 		wait "${gst_pid}" || true
+		print_failure_context
 		exit 8
 	fi
 
@@ -85,6 +92,7 @@ while kill -0 "${gst_pid}" 2>/dev/null; do
 		fi
 		kill -TERM "${gst_pid}" 2>/dev/null || true
 		wait "${gst_pid}" || true
+		print_failure_context
 		exit 8
 	fi
 
@@ -100,11 +108,49 @@ if (( compile_line_count < required_compile_lines )); then
 	fi
 	kill -TERM "${gst_pid}" 2>/dev/null || true
 	wait "${gst_pid}" || true
+	print_failure_context
+	exit 8
+fi
+
+# Require a short healthy window after startup before we intentionally stop.
+stability_deadline=$((SECONDS + stability_window_seconds))
+while (( SECONDS < stability_deadline )); do
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "SCons reported a build error during startup stability window" >&2
+		kill -TERM "${gst_pid}" 2>/dev/null || true
+		wait "${gst_pid}" || true
+		print_failure_context
+		exit 8
+	fi
+
+	if ! kill -0 "${gst_pid}" 2>/dev/null; then
+		set +e
+		wait "${gst_pid}"
+		gst_exit=$?
+		set -e
+		if (( gst_exit != 0 )); then
+			echo "gst exited before startup stability window completed (exit ${gst_exit})" >&2
+			print_failure_context
+			exit 8
+		fi
+		break
+	fi
+
+	sleep 1
+done
+
+if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+	echo "SCons reported a build error before intentional smoke termination" >&2
+	kill -TERM "${gst_pid}" 2>/dev/null || true
+	wait "${gst_pid}" || true
+	print_failure_context
 	exit 8
 fi
 
 kill -TERM "${gst_pid}" 2>/dev/null || true
 wait "${gst_pid}" || true
+
+echo "SCons startup smoke passed after ${compile_line_count} compile lines with ${stability_window_seconds}s stability" >&2
 
 test -d ".gst/runtime/python"
 if [[ "${target_tuple}" == "windows/amd64" ]]; then
