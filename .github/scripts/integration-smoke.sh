@@ -8,6 +8,14 @@ target_tuple="${4:?target tuple required}"
 fixture_dir="${5:?fixture dir required}"
 sanitize_host_env="${6:-false}"
 
+workspace_root="$(cd "${workspace_root}" && pwd)"
+if [[ "${cli_bin}" != /* ]]; then
+	cli_bin="${workspace_root}/${cli_bin#./}"
+fi
+if [[ "${fixture_dir}" != /* ]]; then
+	fixture_dir="${workspace_root}/${fixture_dir#./}"
+fi
+
 project_dir="${workspace_root}/integration-project"
 rm -rf "${project_dir}"
 mkdir -p "${project_dir}"
@@ -34,6 +42,7 @@ if [[ "${sanitize_host_env}" == "true" ]]; then
 fi
 
 log_file="${project_dir}/gst-integration.log"
+: > "${log_file}"
 
 set +e
 "${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
