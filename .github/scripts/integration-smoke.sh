@@ -50,7 +50,7 @@ print_failure_context() {
 }
 
 set +e
-"${cli_bin}" "${gst_args[@]}" > "${log_file}" 2>&1 &
+"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
 gst_pid=$!
 set -e
 
