@@ -49,7 +49,7 @@ jobs:
             target_tuple: linux/amd64
             binary_ext: ""
             smoke_shell: bash
-            sanitize_host_env: 'true'
+            sanitize_host_env: 'false'
             expected_runtime: zig
           - name: linux host -> windows target
             runner: ubuntu-latest

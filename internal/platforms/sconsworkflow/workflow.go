@@ -236,6 +236,9 @@ func (posixHostAdapter) BuildEnv(workspace *internal.Workspace, key string) map[
 		}
 	}
 
+	if systemPath := os.Getenv("PATH"); systemPath != "" {
+		paths = append(paths, systemPath)
+	}
 	separator := string(os.PathListSeparator)
 	env["PATH"] = strings.Join(paths, separator)
 	env["PYTHONPATH"] = strings.Join([]string{filepath.Join(workspace.Runtime, "scons")}, separator)

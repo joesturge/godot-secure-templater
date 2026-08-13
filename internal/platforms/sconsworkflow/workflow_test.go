@@ -3,6 +3,7 @@ package sconsworkflow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,6 +45,7 @@ func TestAdapterForHostTuple(t *testing.T) {
 
 func TestPosixHostBuildEnv(t *testing.T) {
 	// GIVEN a POSIX host adapter and workspace paths
+	t.Setenv("PATH", "/host/system/bin")
 	adapter := posixHostAdapter{}
 	workspace := &internal.Workspace{Runtime: filepath.Join("/tmp", "runtime")}
 
@@ -56,6 +58,10 @@ func TestPosixHostBuildEnv(t *testing.T) {
 		"POSIX PATH should include python/bin so the provisioned python binary is reachable")
 	assert.Contains(t, env["PATH"], filepath.Join("/tmp", "runtime", "bin"),
 		"POSIX PATH should include runtime/bin so the provisioned pkg-config stub is reachable")
+	assert.True(t, strings.HasPrefix(env["PATH"], filepath.Join("/tmp", "runtime", "bin")+":"),
+		"POSIX PATH should prioritise provisioned runtime tools")
+	assert.True(t, strings.HasSuffix(env["PATH"], ":/host/system/bin"),
+		"POSIX PATH should retain host system utilities after provisioned runtime tools")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "BuildEnv should include encryption key override")
 }
 

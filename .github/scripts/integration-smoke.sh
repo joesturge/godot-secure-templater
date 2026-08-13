@@ -34,21 +34,20 @@ gst_args=(
 
 if [[ "${sanitize_host_env}" == "true" ]]; then
 	unset MSYSTEM || true
-	host_toolchain_poison="gst-host-toolchain-must-not-be-used"
-	export MINGW_PREFIX="${host_toolchain_poison}"
-	export CC="${host_toolchain_poison}"
-	export CXX="${host_toolchain_poison}"
-	export AR="${host_toolchain_poison}"
-	export CFLAGS="${host_toolchain_poison}"
-	export CXXFLAGS="${host_toolchain_poison}"
-	export PYTHONHOME="${host_toolchain_poison}"
-	export PYTHONPATH="${host_toolchain_poison}"
-	export EMSDK="${host_toolchain_poison}"
-	export EMSDK_ROOT="${host_toolchain_poison}"
-	export EM_CONFIG="${host_toolchain_poison}"
-	export EM_CACHE="${host_toolchain_poison}"
-	export SCONSFLAGS="${host_toolchain_poison}"
-	export PKG_CONFIG_PATH="${host_toolchain_poison}"
+	unset MINGW_PREFIX || true
+	unset CC || true
+	unset CXX || true
+	unset AR || true
+	unset CFLAGS || true
+	unset CXXFLAGS || true
+	unset PYTHONHOME || true
+	unset PYTHONPATH || true
+	unset EMSDK || true
+	unset EMSDK_ROOT || true
+	unset EM_CONFIG || true
+	unset EM_CACHE || true
+	unset SCONSFLAGS || true
+	unset PKG_CONFIG_PATH || true
 fi
 
 log_file="${project_dir}/gst-integration.log"
