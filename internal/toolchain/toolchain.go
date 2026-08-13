@@ -34,6 +34,19 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 
 		targetDir := filepath.Join(ctx.Workspace.Runtime, art.ExtractTo)
 
+		// Script artifacts are written directly to disk without downloading.
+		if art.Kind == internal.ArchiveScript {
+			if err := provisionScript(targetDir, art.Name, art.Content); err != nil {
+				return &internal.Error{
+					Code:    internal.ExitGenericFailure,
+					Message: fmt.Sprintf("Failed to write script artifact: %s", art.Name),
+					Details: err.Error(),
+				}
+			}
+			ctx.Logger.Info("    ✓ Provisioned successfully")
+			continue
+		}
+
 		// Check if already extracted and has content
 		if isProvisionedAndValid(targetDir, art.Name) {
 			ctx.Logger.Info("    ✓ Already provisioned")
@@ -470,19 +483,38 @@ func VerifyChecksum(filePath, expectedSHA256 string) *internal.Error {
 // installSconsToEmbeddedPython installs SCons into the embedded Python environment.
 // This ensures that python -m SCons works correctly.
 func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *internal.Error {
-	pythonExe := filepath.Join(ctx.Workspace.Runtime, "python", "python.exe")
-
-	// On non-Windows, try without .exe
-	if _, err := os.Stat(pythonExe); err != nil {
-		pythonExe = filepath.Join(ctx.Workspace.Runtime, "python", "python")
+	pythonCandidates := []string{
+		filepath.Join(ctx.Workspace.Runtime, "python", "python.exe"),
+		filepath.Join(ctx.Workspace.Runtime, "python", "python"),
+		filepath.Join(ctx.Workspace.Runtime, "python", "bin", "python"),
+		filepath.Join(ctx.Workspace.Runtime, "python", "bin", "python3"),
+	}
+	var pythonExe string
+	for _, candidate := range pythonCandidates {
+		if _, err := os.Stat(candidate); err == nil {
+			pythonExe = candidate
+			break
+		}
+	}
+	// Fallback: glob for versioned python3.* binaries (e.g. python3.11) in bin/.
+	// python-build-standalone symlinks (python → python3.11) are not materialised during
+	// extraction, so the versioned binary may be the only executable present.
+	if pythonExe == "" {
+		matches, _ := filepath.Glob(filepath.Join(ctx.Workspace.Runtime, "python", "bin", "python3*"))
+		for _, match := range matches {
+			if info, err := os.Stat(match); err == nil && !info.IsDir() {
+				pythonExe = match
+				break
+			}
+		}
 	}
 
 	// Verify python exists
-	if _, err := os.Stat(pythonExe); err != nil {
+	if pythonExe == "" {
 		return &internal.Error{
 			Code:    internal.ExitGenericFailure,
 			Message: "Python not found for SCons installation",
-			Details: err.Error(),
+			Details: fmt.Sprintf("no python executable found under %s", filepath.Join(ctx.Workspace.Runtime, "python")),
 		}
 	}
 
@@ -500,5 +532,22 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 		}
 	}
 
+	return nil
+}
+
+// provisionScript writes a script artifact directly to targetDir/<name> with 0755 permissions.
+func provisionScript(targetDir, name, content string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	}
+	dest := filepath.Join(targetDir, name)
+	if err := os.WriteFile(dest, []byte(content), 0755); err != nil {
+		return fmt.Errorf("failed to write script %s: %w", dest, err)
+	}
+	// Explicitly chmod to ensure the executable bit is set even when the file
+	// already existed with non-executable permissions before this call.
+	if err := os.Chmod(dest, 0755); err != nil {
+		return fmt.Errorf("failed to set permissions on script %s: %w", dest, err)
+	}
 	return nil
 }

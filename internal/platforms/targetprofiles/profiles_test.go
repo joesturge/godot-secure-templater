@@ -33,8 +33,8 @@ func TestSConsTargetProfileTemplateNames(t *testing.T) {
 	assert.Equal(t, "godot.windows.template_debug.x86_64.exe", debugSource, "SourceTemplateName should map debug target to debug source template")
 	assert.Equal(t, "godot.windows.template_release.x86_64.exe", releaseSource, "SourceTemplateName should map release target to release source template")
 	assert.Equal(t, "windows_template_debug.exe", debugDestination, "DestinationTemplateName should apply destination format using BuildTarget values")
-	assert.Contains(t, profile.ExtraSConsArgs, "use_llvm=yes", "Windows profile should force LLVM mode so SCons uses bundled Zig instead of host MinGW discovery")
-	assert.Contains(t, profile.ExtraSConsArgs, "use_mingw=no", "Windows profile should explicitly disable MinGW mode to avoid host compiler assumptions")
+	assert.Contains(t, profile.ExtraSConsArgs, "use_llvm=yes", "Windows profile should force LLVM mode in the MinGW compiler path")
+	assert.Contains(t, profile.ExtraSConsArgs, "use_mingw=yes", "Windows profile should stay on the MinGW compiler path")
 	assert.Contains(t, profile.ExtraSConsArgs, "d3d12=no", "Windows profile should disable D3D12 to avoid host Windows SDK dependency")
 }
 

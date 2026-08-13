@@ -7,10 +7,38 @@ import (
 	platformhelpers "github.com/joemi/godot-secure-templater/internal/platforms"
 )
 
+// pkgConfigStub is a minimal pkg-config wrapper written into the provisioned
+// toolchain bin directory so that Godot's linuxbsd SCons checks never fall
+// back to the host's pkg-config binary. It reports all packages as NOT present
+// (exit 1) so that optional system integrations (fontconfig, PulseAudio, udev,
+// X11, Wayland) are automatically disabled by SCons rather than enabled with
+// missing compile/link flags that would break the actual compile.
+const pkgConfigStub = `#!/bin/sh
+# Provisioned pkg-config stub – part of the gst toolchain.
+# Reports all packages as not found so that Godot's linuxbsd SCons feature
+# checks disable optional system integrations for a self-contained Zig build.
+if [ "$1" = "--version" ]; then
+	echo "0.0.0"
+	exit 0
+fi
+
+if [ "$1" = "--help" ]; then
+	exit 0
+fi
+
+exit 1
+`
+
 // Components returns the toolchain components for a Linux target on a Linux host.
 func Components(version string) []internal.Artifact {
 	releaseTag := platformhelpers.GodotReleaseTagForVersion(version)
 	return []internal.Artifact{
+		{
+			Name:      "pkg-config",
+			ExtractTo: "bin",
+			Kind:      internal.ArchiveScript,
+			Content:   pkgConfigStub,
+		},
 		{
 			Name:      "python",
 			URL:       "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.11.15%2B20260623-x86_64-unknown-linux-gnu-install_only.tar.gz",

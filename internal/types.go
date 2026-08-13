@@ -53,6 +53,9 @@ type Artifact struct {
 	SHA256    string
 	ExtractTo string // subdir under runtime/
 	Kind      ArchiveKind
+	// Content is used when Kind == ArchiveScript. The text is written directly
+	// to ExtractTo/<Name> with 0755 permissions; no download/checksum step runs.
+	Content string
 }
 
 // ArchiveKind enumerates supported archive formats.
@@ -63,6 +66,9 @@ const (
 	ArchiveTarGZ
 	ArchiveTarXZ
 	ArchiveRaw
+	// ArchiveScript writes Artifact.Content directly to disk as an executable script.
+	// No download or checksum step is performed.
+	ArchiveScript
 )
 
 // ProjectConfig represents parsed project.godot data.

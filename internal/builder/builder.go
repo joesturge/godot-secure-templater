@@ -103,7 +103,7 @@ func compileSingle(
 }
 
 // streamOutput reads from a pipe and logs each line.
-func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.ReadCloser, isError bool) {
+func streamOutput(logger internal.Logger, reader io.ReadCloser, isError bool) {
 	scanner := bufio.NewScanner(reader)
 	parser := progress.NewParser()
 	lastStage := progress.StageUnknown
@@ -121,26 +121,22 @@ func streamOutput(logger interface{ Info(string, ...interface{}) }, reader io.Re
 		}
 
 		if isError {
-			if loggerWithWarn, ok := logger.(interface{ Warn(string, ...interface{}) }); ok {
-				loggerWithWarn.Warn(line)
-			} else {
-				logger.Info(line)
-			}
+			logger.Warn(line)
 		} else {
 			logger.Info(line)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		if loggerWithWarn, ok := logger.(interface{ Warn(string, ...interface{}) }); ok {
-			loggerWithWarn.Warn("stream output read error: %v", err)
-		} else {
-			logger.Info("stream output read error: %v", err)
-		}
+		logger.Warn("stream output read error: %v", err)
 	}
 }
 
 // moveTemplate moves the compiled template from the Godot build directory to templates/.
+// It first tries the exact name returned by sourceTemplateName; if that file does not exist
+// it falls back to the first file in bin/ whose name contains the target string (e.g.
+// "template_release"), which handles LLVM-suffixed outputs such as
+// godot.windows.template_release.x86_64.llvm.exe.
 func moveTemplate(
 	ctx *internal.RunContext,
 	godotSrc string,
@@ -153,20 +149,34 @@ func moveTemplate(
 	srcPath := filepath.Join(binDir, srcName)
 
 	if _, err := os.Stat(srcPath); err != nil {
-		var actualFiles []string
+		// Exact name not found — scan bin/ for any file containing the target string.
+		var matched string
+		var allTemplates []string
 		if entries, dirErr := os.ReadDir(binDir); dirErr == nil {
 			for _, entry := range entries {
-				if !entry.IsDir() && strings.Contains(entry.Name(), "template") {
-					actualFiles = append(actualFiles, entry.Name())
+				if entry.IsDir() {
+					continue
+				}
+				if strings.Contains(entry.Name(), "template") {
+					allTemplates = append(allTemplates, entry.Name())
+				}
+				if matched == "" && strings.Contains(entry.Name(), string(target)) {
+					matched = entry.Name()
 				}
 			}
 		}
 
-		return &internal.Error{
-			Code:    internal.ExitGenericFailure,
-			Message: fmt.Sprintf("Compiled template not found at %s", srcPath),
-			Details: fmt.Sprintf("Expected: %s\nFound templates in bin/: %v", srcName, actualFiles),
+		if matched == "" {
+			return &internal.Error{
+				Code:    internal.ExitGenericFailure,
+				Message: fmt.Sprintf("Compiled template not found at %s", srcPath),
+				Details: fmt.Sprintf("Expected: %s\nFound templates in bin/: %v", srcName, allTemplates),
+			}
 		}
+
+		ctx.Logger.Info("    ℹ Source %s not found; using %s", srcName, matched)
+		srcName = matched
+		srcPath = filepath.Join(binDir, matched)
 	}
 
 	dstName := destinationTemplateName(target)

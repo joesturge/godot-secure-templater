@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -31,6 +33,7 @@ secure (encrypted) Godot export templates natively inside a user's project direc
 
 Instead of manually installing a C++ toolchain, Python, SCons, and the Godot source tree,
 this tool handles everything in an isolated .gst/ workspace.`,
+		SilenceUsage: true,
 	}
 
 	createCmd = &cobra.Command{
@@ -398,9 +401,17 @@ func runClean(cmd *cobra.Command, args []string) error {
 func buildToolchainChecksums(components []internal.Artifact) map[string]string {
 	checksums := make(map[string]string)
 	for _, component := range components {
-		value := component.SHA256
-		if strings.HasPrefix(value, "placeholder_godot_") {
-			value = ""
+		var value string
+		if component.Kind == internal.ArchiveScript {
+			// Script artifacts have no download checksum; hash the content so
+			// that cache lookup detects content changes across versions.
+			h := sha256.Sum256([]byte(component.Content))
+			value = hex.EncodeToString(h[:])
+		} else {
+			value = component.SHA256
+			if strings.HasPrefix(value, "placeholder_godot_") {
+				value = ""
+			}
 		}
 		checksums[component.Name] = value
 	}

@@ -20,6 +20,22 @@ func (l *captureLogger) Info(msg string, args ...interface{}) {
 	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
 }
 
+func (l *captureLogger) Warn(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func (l *captureLogger) Error(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func (l *captureLogger) Debug(msg string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(msg, args...)))
+}
+
+func (l *captureLogger) Printf(format string, args ...interface{}) {
+	l.lines = append(l.lines, strings.TrimSpace(formatLine(format, args...)))
+}
+
 func formatLine(msg string, args ...interface{}) string {
 	if len(args) == 0 {
 		return msg
@@ -225,6 +241,54 @@ func TestMoveTemplate_NotFound(t *testing.T) {
 	assert.NotNil(t, moveErr, "Should error when template not found")
 	assert.Contains(t, moveErr.Message, "Compiled template not found", "Error should indicate missing template")
 	assert.Contains(t, moveErr.Details, "godot.windows.template_release.x86_64.exe", "Error should mention expected filename")
+}
+
+func TestMoveTemplate_LLVMSuffixedExecutable(t *testing.T) {
+	// GIVEN a bin/ directory where SCons produced an LLVM-suffixed filename
+	tempDir := t.TempDir()
+	binDir := filepath.Join(tempDir, "bin")
+	templatesDir := filepath.Join(tempDir, "templates")
+
+	err := os.Mkdir(binDir, 0755)
+	assert.NoError(t, err, "Failed to create bin directory")
+
+	// SCons with use_llvm=yes produces this name, not the plain .exe
+	sourceFile := filepath.Join(binDir, "godot.windows.template_release.x86_64.llvm.exe")
+	templateContent := []byte("fake llvm template executable")
+	err = os.WriteFile(sourceFile, templateContent, 0755)
+	assert.NoError(t, err, "Failed to create LLVM template file")
+
+	ctx := &internal.RunContext{
+		Workspace: &internal.Workspace{
+			Templates: templatesDir,
+		},
+		Logger: internal.NewSimpleLogger(false),
+	}
+	sourceTemplateName := func(target BuildTarget) string {
+		if target == BuildDebug {
+			return "godot.windows.template_debug.x86_64.exe"
+		}
+		return "godot.windows.template_release.x86_64.exe"
+	}
+	destinationTemplateName := func(target BuildTarget) string {
+		return fmt.Sprintf("windows_%s.exe", target)
+	}
+
+	// WHEN calling moveTemplate where the exact source name does not exist but an
+	// executable containing the target string does
+	moveErr := moveTemplate(ctx, tempDir, BuildRelease, sourceTemplateName, destinationTemplateName)
+
+	// THEN it should succeed using the LLVM-suffixed file
+	assert.Nil(t, moveErr, "Should copy LLVM-suffixed template without error")
+
+	// AND the destination file should exist
+	dstPath := filepath.Join(templatesDir, "windows_template_release.exe")
+	assert.FileExists(t, dstPath, "Destination template should exist")
+
+	// AND content should match
+	dstContent, readErr := os.ReadFile(dstPath)
+	assert.NoError(t, readErr, "Failed to read destination file")
+	assert.Equal(t, templateContent, dstContent, "Destination content should match LLVM source")
 }
 
 func TestMoveTemplate_CreateDestinationDir(t *testing.T) {

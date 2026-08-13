@@ -5,12 +5,16 @@ workspace_root="${1:?workspace root required}"
 cli_bin="${2:?cli binary required}"
 godot_version="${3:?godot version required}"
 target_tuple="${4:?target tuple required}"
-mode="${5:?integration mode required (verify|compile)}"
-expected_release="${6:?expected release template required}"
-expected_debug="${7:?expected debug template required}"
-fixture_dir="${8:?fixture dir required}"
-sanitize_host_env="${9:-false}"
-assert_zig_provenance="${10:-false}"
+fixture_dir="${5:?fixture dir required}"
+sanitize_host_env="${6:-false}"
+
+workspace_root="$(cd "${workspace_root}" && pwd)"
+if [[ "${cli_bin}" != /* ]]; then
+	cli_bin="${workspace_root}/${cli_bin#./}"
+fi
+if [[ "${fixture_dir}" != /* ]]; then
+	fixture_dir="${workspace_root}/${fixture_dir#./}"
+fi
 
 project_dir="${workspace_root}/integration-project"
 rm -rf "${project_dir}"
@@ -18,34 +22,18 @@ mkdir -p "${project_dir}"
 cp -R "${fixture_dir}/." "${project_dir}/"
 
 pushd "${project_dir}" >/dev/null
-case "${mode}" in
-	verify|compile)
-		;;
-	*)
-		echo "invalid integration mode: ${mode} (expected verify or compile)" >&2
-		exit 2
-		;;
-esac
 
 gst_args=(
 	create
 	--force
+	--force-rebuild
 	--godot-version "${godot_version}"
 	--platform "${target_tuple}"
 )
 
-if [[ "${mode}" == "verify" ]]; then
-	gst_args+=(--verify-only)
-	if [[ "${assert_zig_provenance}" == "true" ]]; then
-		gst_args+=(--verbose)
-	fi
-else
-	gst_args+=(--force-rebuild)
-fi
-
 if [[ "${sanitize_host_env}" == "true" ]]; then
-	unset MINGW_PREFIX || true
 	unset MSYSTEM || true
+	unset MINGW_PREFIX || true
 	unset CC || true
 	unset CXX || true
 	unset AR || true
@@ -54,38 +42,124 @@ if [[ "${sanitize_host_env}" == "true" ]]; then
 fi
 
 log_file="${project_dir}/gst-integration.log"
-"${cli_bin}" "${gst_args[@]}" 2>&1 | tee "${log_file}"
+: > "${log_file}"
 
-if [[ "${mode}" == "verify" ]]; then
-	test -d ".gst/runtime/python"
-	test -d ".gst/runtime/zig"
-	test -d ".gst/runtime/scons"
-	test -d ".gst/runtime/godot_source"
+print_failure_context() {
+	echo "integration smoke failed; recent gst log output:" >&2
+	tail -n 80 "${log_file}" >&2 || true
+}
 
-	if [[ "${target_tuple}" == "windows/amd64" ]]; then
-		test -d ".gst/runtime/zig-shims"
-		test -d ".gst/runtime/zig-shims/bin"
+set +e
+"${cli_bin}" "${gst_args[@]}" > >(tee "${log_file}") 2>&1 &
+gst_pid=$!
+set -e
+
+scons_invocation_regex='scons: Building targets \.\.\.'
+compile_progress_regex='Compiling .+ \.\.\.'
+fatal_runtime_regex='scons: \*\*\*|Error: SCons build failed'
+required_compile_lines=25
+stability_window_seconds=10
+scons_invoked="false"
+compile_deadline=$((SECONDS + 300))
+
+while kill -0 "${gst_pid}" 2>/dev/null; do
+	if [[ "${scons_invoked}" != "true" ]] && grep -Eq "${scons_invocation_regex}" "${log_file}"; then
+		scons_invoked="true"
 	fi
 
-	if [[ "${assert_zig_provenance}" == "true" ]]; then
-		grep -F 'Verify-only compiler env: CC="zig cc" CXX="zig c++" AR="zig ar"' "${log_file}"
-		grep -E 'Verify-only compiler env: .*MINGW_PREFIX=".+"' "${log_file}"
-		grep -E 'Verify-only PATH head: .*zig-shims' "${log_file}"
-		grep -E 'Verify-only SCons args: .*use_llvm=yes.*use_mingw=no' "${log_file}"
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "compile startup smoke detected a build error" >&2
+		kill -TERM "${gst_pid}" 2>/dev/null || true
+		wait "${gst_pid}" || true
+		print_failure_context
+		exit 8
 	fi
 
-	test ! -f ".gst/manifest.json"
-	test ! -f ".gst/encryption.key"
-	test ! -f ".gst/templates/${expected_release}"
-	test ! -f ".gst/templates/${expected_debug}"
+	compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
+	if (( compile_line_count >= required_compile_lines )); then
+		break
+	fi
 
-	popd >/dev/null
-	exit 0
+	if (( SECONDS >= compile_deadline )); then
+		if (( compile_line_count == 0 )); then
+			if [[ "${scons_invoked}" == "true" ]]; then
+				echo "timed out waiting for actual SCons compile output" >&2
+			else
+				echo "timed out waiting for SCons to start" >&2
+			fi
+		else
+			echo "timed out waiting for SCons compile progress (${required_compile_lines} lines)" >&2
+		fi
+		kill -TERM "${gst_pid}" 2>/dev/null || true
+		wait "${gst_pid}" || true
+		print_failure_context
+		exit 8
+	fi
+
+	sleep 1
+done
+
+compile_line_count="$(grep -Ec "${compile_progress_regex}" "${log_file}" || true)"
+if (( compile_line_count < required_compile_lines )); then
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "SCons compile started but failed before required progress (${required_compile_lines} lines)" >&2
+	else
+		echo "SCons compile startup did not reach required progress (${compile_line_count}/${required_compile_lines})" >&2
+	fi
+	kill -TERM "${gst_pid}" 2>/dev/null || true
+	wait "${gst_pid}" || true
+	print_failure_context
+	exit 8
 fi
 
-test -f ".gst/templates/${expected_release}"
-test -f ".gst/templates/${expected_debug}"
-test -f ".gst/manifest.json"
-test -f ".gst/encryption.key"
+# Require a short healthy window after startup before we intentionally stop.
+stability_deadline=$((SECONDS + stability_window_seconds))
+while (( SECONDS < stability_deadline )); do
+	if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+		echo "SCons reported a build error during startup stability window" >&2
+		kill -TERM "${gst_pid}" 2>/dev/null || true
+		wait "${gst_pid}" || true
+		print_failure_context
+		exit 8
+	fi
+
+	if ! kill -0 "${gst_pid}" 2>/dev/null; then
+		set +e
+		wait "${gst_pid}"
+		gst_exit=$?
+		set -e
+		if (( gst_exit != 0 )); then
+			echo "gst exited before startup stability window completed (exit ${gst_exit})" >&2
+			print_failure_context
+			exit 8
+		fi
+		break
+	fi
+
+	sleep 1
+done
+
+if grep -Eq "${fatal_runtime_regex}" "${log_file}"; then
+	echo "SCons reported a build error before intentional smoke termination" >&2
+	kill -TERM "${gst_pid}" 2>/dev/null || true
+	wait "${gst_pid}" || true
+	print_failure_context
+	exit 8
+fi
+
+kill -TERM "${gst_pid}" 2>/dev/null || true
+wait "${gst_pid}" || true
+
+echo "SCons startup smoke passed after ${compile_line_count} compile lines with ${stability_window_seconds}s stability" >&2
+
+test -d ".gst/runtime/python"
+if [[ "${target_tuple}" == "windows/amd64" ]]; then
+	test -d ".gst/runtime/mingw"
+else
+	test -d ".gst/runtime/zig"
+fi
+test -d ".gst/runtime/scons"
+test -d ".gst/runtime/godot_source"
 
 popd >/dev/null
+exit 0

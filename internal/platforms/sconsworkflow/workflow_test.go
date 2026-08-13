@@ -50,32 +50,84 @@ func TestPosixHostBuildEnv(t *testing.T) {
 	// WHEN building environment overrides
 	env := adapter.BuildEnv(workspace, "test-key")
 
-	// THEN PATH should use POSIX separator and key should be set
+	// THEN PATH should use POSIX separator, include python/bin, and set the key
 	assert.Contains(t, env["PATH"], ":", "POSIX PATH should use colon separator")
+	assert.Contains(t, env["PATH"], filepath.Join("/tmp", "runtime", "python", "bin"),
+		"POSIX PATH should include python/bin so the provisioned python binary is reachable")
+	assert.Contains(t, env["PATH"], filepath.Join("/tmp", "runtime", "bin"),
+		"POSIX PATH should include runtime/bin so the provisioned pkg-config stub is reachable")
 	assert.Equal(t, "test-key", env["SCRIPT_AES256_ENCRYPTION_KEY"], "BuildEnv should include encryption key override")
 }
 
-func TestResolvePythonExecutableFallsBackToSystemPython(t *testing.T) {
-	// GIVEN no provisioned runtime python and a fake system python3 on PATH
+func TestResolvePythonExecutableFailsWithoutRuntimePython(t *testing.T) {
+	// GIVEN no provisioned runtime python
 	runtimeDir := t.TempDir()
-	binDir := t.TempDir()
-	pythonPath := filepath.Join(binDir, "python3")
-	err := os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
-	assert.NoError(t, err, "Fake python3 shim should be created")
-
-	oldPath := os.Getenv("PATH")
-	err = os.Setenv("PATH", binDir)
-	assert.NoError(t, err, "PATH should be overrideable for the test")
-	t.Cleanup(func() {
-		_ = os.Setenv("PATH", oldPath)
-	})
 
 	// WHEN resolving the python executable
 	resolved, err := resolvePythonExecutable(runtimeDir)
 
-	// THEN it should fall back to the system python3
-	assert.NoError(t, err, "resolvePythonExecutable should fall back to system python on POSIX hosts")
-	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return the python3 found on PATH")
+	// THEN it should fail fast instead of falling back to host binaries
+	assert.Error(t, err, "resolvePythonExecutable should fail when runtime python is missing")
+	assert.Equal(t, filepath.Join(runtimeDir, "python", "python"), resolved, "resolvePythonExecutable should return the expected runtime python path on POSIX hosts")
+}
+
+func TestResolvePythonExecutable_BinLayout(t *testing.T) {
+	// GIVEN a python-build-standalone layout (python/bin/python)
+	runtimeDir := t.TempDir()
+	binDir := filepath.Join(runtimeDir, "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/bin directory should be creatable")
+
+	pythonPath := filepath.Join(binDir, "python")
+	err = os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "python/bin/python executable should be creatable")
+
+	// WHEN resolving the python executable
+	resolved, err := resolvePythonExecutable(runtimeDir)
+
+	// THEN it should find the bin/python layout
+	assert.NoError(t, err, "resolvePythonExecutable should succeed for python-build-standalone layout")
+	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/bin/python for python-build-standalone layout")
+}
+
+func TestResolvePythonExecutable_NestedSubdirLayout(t *testing.T) {
+	// GIVEN a python-build-standalone layout where the archive extracts to a
+	// nested python/ subdirectory (e.g. runtime/python/python/bin/python3)
+	runtimeDir := t.TempDir()
+	binDir := filepath.Join(runtimeDir, "python", "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/python/bin directory should be creatable")
+
+	pythonPath := filepath.Join(binDir, "python3")
+	err = os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "python/python/bin/python3 executable should be creatable")
+
+	// WHEN resolving the python executable
+	resolved, err := resolvePythonExecutable(runtimeDir)
+
+	// THEN it should find the nested subdirectory layout
+	assert.NoError(t, err, "resolvePythonExecutable should succeed for nested python-build-standalone layout")
+	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/python/bin/python3 for nested layout")
+}
+
+func TestResolvePythonExecutable_BinLayoutVersionedOnly(t *testing.T) {
+	// GIVEN a python-build-standalone layout where symlinks were not extracted
+	// and only the versioned binary (e.g. python3.11) exists in bin/
+	runtimeDir := t.TempDir()
+	binDir := filepath.Join(runtimeDir, "python", "bin")
+	err := os.MkdirAll(binDir, 0755)
+	assert.NoError(t, err, "python/bin directory should be creatable")
+
+	pythonPath := filepath.Join(binDir, "python3.11")
+	err = os.WriteFile(pythonPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "python/bin/python3.11 executable should be creatable")
+
+	// WHEN resolving the python executable
+	resolved, err := resolvePythonExecutable(runtimeDir)
+
+	// THEN it should find the versioned binary even without symlinks
+	assert.NoError(t, err, "resolvePythonExecutable should succeed when only python3.11 is present")
+	assert.Equal(t, pythonPath, resolved, "resolvePythonExecutable should return python/bin/python3.11 when symlinks are absent")
 }
 
 func TestResolveZigExecutable_RuntimeRoot(t *testing.T) {
@@ -114,4 +166,78 @@ func TestResolveZigExecutable_NestedLayout(t *testing.T) {
 	// THEN it should return the nested zig executable
 	assert.NoError(t, err, "resolveZigExecutable should resolve nested runtime zig executable")
 	assert.Equal(t, zigPath, resolved, "resolveZigExecutable should return nested zig path")
+}
+
+func TestResolveExeFromEnvPath_FindsExeByName(t *testing.T) {
+	// GIVEN a bin directory with a gcc executable
+	binDir := t.TempDir()
+	gccPath := filepath.Join(binDir, "gcc")
+	err := os.WriteFile(gccPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "gcc executable should be creatable")
+
+	// WHEN resolving gcc from the env PATH
+	resolved, err := resolveExeFromEnvPath("gcc", binDir, ":")
+
+	// THEN it should return the gcc executable path
+	assert.NoError(t, err, "resolveExeFromEnvPath should find gcc in PATH")
+	assert.Equal(t, gccPath, resolved, "resolveExeFromEnvPath should return the correct gcc path")
+}
+
+func TestResolveExeFromEnvPath_FindsExeExtension(t *testing.T) {
+	// GIVEN a bin directory with a gcc.exe executable (Windows-style)
+	binDir := t.TempDir()
+	gccPath := filepath.Join(binDir, "gcc.exe")
+	err := os.WriteFile(gccPath, []byte(""), 0755)
+	assert.NoError(t, err, "gcc.exe executable should be creatable")
+
+	// WHEN resolving gcc from the env PATH using semicolon separator
+	resolved, err := resolveExeFromEnvPath("gcc", binDir, ";")
+
+	// THEN it should find gcc.exe when gcc is absent
+	assert.NoError(t, err, "resolveExeFromEnvPath should find gcc.exe in PATH")
+	assert.Equal(t, gccPath, resolved, "resolveExeFromEnvPath should return gcc.exe when gcc is absent")
+}
+
+func TestResolveExeFromEnvPath_ReturnsErrorWhenNotFound(t *testing.T) {
+	// GIVEN a bin directory without the requested executable
+	binDir := t.TempDir()
+
+	// WHEN resolving a missing executable
+	_, err := resolveExeFromEnvPath("ar", binDir, ":")
+
+	// THEN it should return an error
+	assert.Error(t, err, "resolveExeFromEnvPath should fail when executable is absent from PATH")
+}
+
+func TestResolveExeFromEnvPath_SearchesMultiplePathEntries(t *testing.T) {
+	// GIVEN two bin directories where ar is only in the second
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+	arPath := filepath.Join(dir2, "ar")
+	err := os.WriteFile(arPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "ar executable should be creatable")
+
+	envPath := dir1 + ":" + dir2
+
+	// WHEN resolving ar from the multi-entry env PATH
+	resolved, err := resolveExeFromEnvPath("ar", envPath, ":")
+
+	// THEN it should find ar in the second directory
+	assert.NoError(t, err, "resolveExeFromEnvPath should search all PATH entries")
+	assert.Equal(t, arPath, resolved, "resolveExeFromEnvPath should return ar from the second PATH entry")
+}
+
+func TestResolveExeFromEnvPath_AbsolutePathUsedDirectly(t *testing.T) {
+	// GIVEN an absolute executable path that exists on disk
+	dir := t.TempDir()
+	gccPath := filepath.Join(dir, "gcc")
+	err := os.WriteFile(gccPath, []byte("#!/bin/sh\nexit 0\n"), 0755)
+	assert.NoError(t, err, "gcc executable should be creatable")
+
+	// WHEN resolving using an absolute path as the name
+	resolved, err := resolveExeFromEnvPath(gccPath, "", ":")
+
+	// THEN it should return the absolute path without searching PATH
+	assert.NoError(t, err, "resolveExeFromEnvPath should accept an absolute path directly")
+	assert.Equal(t, gccPath, resolved, "resolveExeFromEnvPath should return the absolute path unchanged")
 }

@@ -12,38 +12,16 @@ import (
 	"github.com/joemi/godot-secure-templater/internal/platforms/targetprofiles"
 )
 
-var lookPathFn = exec.LookPath
-
-func ensureHostDependencies() *internal.Error {
-	if _, err := lookPathFn("pkg-config"); err == nil {
-		return nil
-	}
-
-	return &internal.Error{
-		Code:    internal.ExitBuildFailed,
-		Message: "Missing required host dependency: pkg-config",
-		Details: "Linux template builds require pkg-config for Godot's linuxbsd SCons checks. Install pkg-config (or pkgconf) on the host and rerun.\nUbuntu/Debian: sudo apt-get install -y pkg-config\nFedora: sudo dnf install -y pkgconf-pkg-config\nArch: sudo pacman -S pkgconf",
-	}
-}
-
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
-	if err := ensureHostDependencies(); err != nil {
+	compilerEnv, err := zigCompilerEnv(ctx.Workspace.Runtime)
+	if err != nil {
 		return err
 	}
-
-	return sconsworkflow.VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, map[string]string{
-		"CC":  "zig cc",
-		"CXX": "zig c++",
-		"AR":  "zig ar",
-	})
+	return sconsworkflow.VerifyCompileReadinessWithEnv(ctx, hostTuple, profile, compilerEnv)
 }
 
 func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
 	return func(ctx *internal.RunContext, target builder.BuildTarget, key string) (*exec.Cmd, *internal.Error) {
-		if err := ensureHostDependencies(); err != nil {
-			return nil, err
-		}
-
 		tools, err := sconsworkflow.ResolveRuntimeTools(ctx.Workspace, ctx.Logger)
 		if err != nil {
 			return nil, err
@@ -69,20 +47,50 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 			sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
 		}
 
+		env, envErr := buildEnv(ctx.Workspace, key)
+		if envErr != nil {
+			return nil, envErr
+		}
+
 		cmd := sconsworkflow.BuildCommand(pythonExe, sconsExe, sconsArgs, ctx.Logger)
 		cmd.Dir = godotSrc
-		cmd.Env = makeEnv(buildEnv(ctx.Workspace, key))
+		cmd.Env = makeEnv(env)
 		return cmd, nil
 	}
 }
 
-func buildEnv(workspace *internal.Workspace, key string) map[string]string {
+func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *internal.Error) {
 	hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 	env := hostAdapter.BuildEnv(workspace, key)
-	env["CC"] = "zig cc"
-	env["CXX"] = "zig c++"
-	env["AR"] = "zig ar"
-	return env
+	compilerEnv, err := zigCompilerEnv(workspace.Runtime)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range compilerEnv {
+		env[k] = v
+	}
+	return env, nil
+}
+
+// zigCompilerEnv resolves the absolute path to the provisioned zig binary and returns
+// CC, CXX, and AR overrides that use it directly, so no PATH lookup is needed.
+// The path is double-quoted so that workspace paths containing spaces are handled
+// correctly by SCons when it parses the compiler command string.
+func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
+	zigExe, err := sconsworkflow.ResolveZigExecutable(runtimeDir)
+	if err != nil {
+		return nil, &internal.Error{
+			Code:    internal.ExitBuildFailed,
+			Message: "Provisioned zig compiler not found",
+			Details: err.Error(),
+		}
+	}
+	quoted := fmt.Sprintf("%q", zigExe)
+	return map[string]string{
+		"CC":  quoted + " cc",
+		"CXX": quoted + " c++",
+		"AR":  quoted + " ar",
+	}, nil
 }
 
 func makeEnv(overrides map[string]string) []string {
@@ -99,3 +107,4 @@ func makeEnv(overrides map[string]string) []string {
 	}
 	return filtered
 }
+
