@@ -7,6 +7,7 @@ godot_version="${3:?godot version required}"
 target_tuple="${4:?target tuple required}"
 fixture_dir="${5:?fixture dir required}"
 sanitize_host_env="${6:-false}"
+expected_runtime="${7:-}"
 
 workspace_root="$(cd "${workspace_root}" && pwd)"
 if [[ "${cli_bin}" != /* ]]; then
@@ -153,11 +154,14 @@ wait "${gst_pid}" || true
 echo "SCons startup smoke passed after ${compile_line_count} compile lines with ${stability_window_seconds}s stability" >&2
 
 test -d ".gst/runtime/python"
-if [[ "${target_tuple}" == "windows/amd64" ]]; then
-	test -d ".gst/runtime/mingw"
-else
-	test -d ".gst/runtime/zig"
+if [[ -z "${expected_runtime}" ]]; then
+	if [[ "${target_tuple}" == "windows/amd64" ]]; then
+		expected_runtime="mingw"
+	else
+		expected_runtime="zig"
+	fi
 fi
+test -d ".gst/runtime/${expected_runtime}"
 test -d ".gst/runtime/scons"
 test -d ".gst/runtime/godot_source"
 

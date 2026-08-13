@@ -68,3 +68,18 @@ func TestLinuxPluginArtifactPaths(t *testing.T) {
 	assert.Equal(t, filepath.Join("/tmp", "project", ".gst", "templates", "linux_template_release.x86_64"), releasePath, "Linux release artifact path should use expected filename")
 	assert.Equal(t, filepath.Join("/tmp", "project", ".gst", "templates", "linux_template_debug.x86_64"), debugPath, "Linux debug artifact path should use expected filename")
 }
+
+func TestLinuxPluginRegistersWindowsTargetDefinition(t *testing.T) {
+	// GIVEN the linux platform plugin package init has registered supported tuples
+
+	// WHEN looking up the linux-host windows-target tuple pair
+	def, ok := platform.LookupHostTarget("linux/amd64", "windows/amd64")
+
+	// THEN the registry should advertise the Linux->Windows cross-compile path
+	assert.True(t, ok, "Linux plugin should register a linux/amd64 -> windows/amd64 tuple definition")
+	assert.Equal(t, "windows/amd64", def.TargetTuple, "Linux plugin should target windows/amd64 for cross-compilation")
+	assert.Equal(t, "linux/amd64", def.HostTuple, "Linux plugin should declare linux/amd64 host tuple")
+	assert.NotNil(t, def.Components, "Linux platform should provide a component resolver callback for the Windows target")
+	assert.NotNil(t, def.Compile, "Linux platform should provide a compile callback for the Windows target")
+	assert.NotNil(t, def.Verify, "Linux platform should provide a verify callback for the Windows target")
+}

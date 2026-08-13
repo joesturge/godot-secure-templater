@@ -13,7 +13,7 @@ import (
 )
 
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
-	compilerEnv, err := zigCompilerEnv(ctx.Workspace.Runtime)
+	compilerEnv, err := zigCompilerEnvForTarget(ctx.Workspace.Runtime, profile.TargetTuple)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 			sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
 		}
 
-		env, envErr := buildEnv(ctx.Workspace, key)
+		env, envErr := buildEnvForProfile(ctx.Workspace, key, profile.TargetTuple)
 		if envErr != nil {
 			return nil, envErr
 		}
@@ -60,9 +60,13 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 }
 
 func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *internal.Error) {
+	return buildEnvForProfile(workspace, key, "linux/amd64")
+}
+
+func buildEnvForProfile(workspace *internal.Workspace, key string, targetTuple string) (map[string]string, *internal.Error) {
 	hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 	env := hostAdapter.BuildEnv(workspace, key)
-	compilerEnv, err := zigCompilerEnv(workspace.Runtime)
+	compilerEnv, err := zigCompilerEnvForTarget(workspace.Runtime, targetTuple)
 	if err != nil {
 		return nil, err
 	}
@@ -72,11 +76,7 @@ func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *in
 	return env, nil
 }
 
-// zigCompilerEnv resolves the absolute path to the provisioned zig binary and returns
-// CC, CXX, and AR overrides that use it directly, so no PATH lookup is needed.
-// The path is double-quoted so that workspace paths containing spaces are handled
-// correctly by SCons when it parses the compiler command string.
-func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
+func zigCompilerEnvForTarget(runtimeDir string, targetTuple string) (map[string]string, *internal.Error) {
 	zigExe, err := sconsworkflow.ResolveZigExecutable(runtimeDir)
 	if err != nil {
 		return nil, &internal.Error{
@@ -86,11 +86,25 @@ func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
 		}
 	}
 	quoted := fmt.Sprintf("%q", zigExe)
+	compilerPrefix := quoted + " cc"
+	compilerCXXPrefix := quoted + " c++"
+	if strings.EqualFold(strings.TrimSpace(targetTuple), "windows/amd64") {
+		compilerPrefix += " -target x86_64-windows-gnu"
+		compilerCXXPrefix += " -target x86_64-windows-gnu"
+	}
 	return map[string]string{
-		"CC":  quoted + " cc",
-		"CXX": quoted + " c++",
+		"CC":  compilerPrefix,
+		"CXX": compilerCXXPrefix,
 		"AR":  quoted + " ar",
 	}, nil
+}
+
+// zigCompilerEnv resolves the absolute path to the provisioned zig binary and returns
+// CC, CXX, and AR overrides that use it directly, so no PATH lookup is needed.
+// The path is double-quoted so that workspace paths containing spaces are handled
+// correctly by SCons when it parses the compiler command string.
+func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
+	return zigCompilerEnvForTarget(runtimeDir, "linux/amd64")
 }
 
 func makeEnv(overrides map[string]string) []string {
@@ -107,4 +121,3 @@ func makeEnv(overrides map[string]string) []string {
 	}
 	return filtered
 }
-
