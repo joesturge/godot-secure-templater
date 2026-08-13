@@ -21,6 +21,7 @@ $ gst create
 ### 🛠️ Automated Toolchain
 - Downloads Python, MinGW, SCons, and Godot source into an isolated workspace
 - Runs in `.gst/` (isolated workspace)
+- Ignores host compiler, Python, SCons, and SDK configuration during builds
 - Cleans up after build; use `--keep-runtime` for debugging
 - **Result:** No manual compiler installation ever
 

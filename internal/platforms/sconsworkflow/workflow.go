@@ -236,9 +236,6 @@ func (posixHostAdapter) BuildEnv(workspace *internal.Workspace, key string) map[
 		}
 	}
 
-	if systemPath := os.Getenv("PATH"); systemPath != "" {
-		paths = append(paths, systemPath)
-	}
 	separator := string(os.PathListSeparator)
 	env["PATH"] = strings.Join(paths, separator)
 	env["PYTHONPATH"] = strings.Join([]string{filepath.Join(workspace.Runtime, "scons")}, separator)
@@ -379,18 +376,7 @@ func findGodotSource(baseDir string) (string, error) {
 }
 
 func mergedEnv(overrides map[string]string) []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, e := range env {
-		key := strings.SplitN(e, "=", 2)[0]
-		if _, ok := overrides[key]; !ok {
-			filtered = append(filtered, e)
-		}
-	}
-	for k, v := range overrides {
-		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
-	}
-	return filtered
+	return internal.SanitizedEnv(overrides)
 }
 
 func pathHead(pathValue string, hostTuple string) string {

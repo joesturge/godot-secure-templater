@@ -14,5 +14,6 @@ applyTo: ".github/workflows/**"
 - Lint & tests: workflows must run `go test ./...` and `golangci-lint run ./...` before producing artifacts.
 - Debug-first validation: when a toolchain or platform regression is suspected, prefer the smallest package-scoped validation first (`go test ./internal/platforms/sconsworkflow/... ./internal/toolchain/...` plus the matching `golangci-lint run` target) before expanding to the full repository suite.
 - Web build environment checks: validate the Emscripten SDK path setup (`PYTHONPATH` + emitted `emcc` importability) before considering the build failed for unrelated reasons.
+- Smoke-test hygiene: poison host compiler, Python, SCons, package-config, and SDK variables during integration smoke tests so the provisioned runtime fails if host toolchain state leaks into a subprocess.
 
 Keep this file minimal — add detailed CI examples to `docs/` when more than one concrete example is needed.

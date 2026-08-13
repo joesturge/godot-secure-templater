@@ -152,16 +152,5 @@ func hasBinDir(path string) bool {
 }
 
 func makeEnv(overrides map[string]string) []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, e := range env {
-		key := strings.SplitN(e, "=", 2)[0]
-		if _, ok := overrides[key]; !ok {
-			filtered = append(filtered, e)
-		}
-	}
-	for k, v := range overrides {
-		filtered = append(filtered, fmt.Sprintf("%s=%s", k, v))
-	}
-	return filtered
+	return internal.SanitizedEnv(overrides)
 }

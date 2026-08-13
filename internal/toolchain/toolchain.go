@@ -583,6 +583,7 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 	// Run setup.py install from sconsDir
 	cmd := exec.Command(pythonExe, "setup.py", "install")
 	cmd.Dir = sconsDir
+	cmd.Env = embeddedPythonEnv(pythonExe)
 
 	// Capture output
 	output, err := cmd.CombinedOutput()
@@ -599,6 +600,7 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 
 func ensureSetuptoolsAvailable(pythonExe string) error {
 	check := exec.Command(pythonExe, "-c", "import setuptools")
+	check.Env = embeddedPythonEnv(pythonExe)
 	if _, err := check.CombinedOutput(); err == nil {
 		return nil
 	}
@@ -609,9 +611,11 @@ func ensureSetuptoolsAvailable(pythonExe string) error {
 	}
 	for _, args := range bootstrapTargets {
 		cmd := exec.Command(pythonExe, args...)
+		cmd.Env = embeddedPythonEnv(pythonExe)
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			verify := exec.Command(pythonExe, "-c", "import setuptools")
+			verify.Env = embeddedPythonEnv(pythonExe)
 			if _, verifyErr := verify.CombinedOutput(); verifyErr == nil {
 				return nil
 			}
@@ -621,6 +625,18 @@ func ensureSetuptoolsAvailable(pythonExe string) error {
 	}
 
 	return fmt.Errorf("python %s is missing setuptools and bootstrap steps failed", pythonExe)
+}
+
+func embeddedPythonEnv(pythonExe string) []string {
+	path := filepath.Dir(pythonExe)
+	if systemPath := os.Getenv("PATH"); systemPath != "" {
+		path += string(os.PathListSeparator) + systemPath
+	}
+	return internal.SanitizedEnv(map[string]string{
+		"PATH":       path,
+		"PYTHONHOME": "",
+		"PYTHONPATH": "",
+	})
 }
 
 // enableSiteForEmbeddedPython patches any python*._pth files found in pythonDir to uncomment

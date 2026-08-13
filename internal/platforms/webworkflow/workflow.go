@@ -128,16 +128,5 @@ func resolveSDKRoot(runtimeDir string) string {
 }
 
 func mergedEnv(overrides map[string]string) []string {
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, entry := range env {
-		key := strings.SplitN(entry, "=", 2)[0]
-		if _, overridden := overrides[key]; !overridden {
-			filtered = append(filtered, entry)
-		}
-	}
-	for key, value := range overrides {
-		filtered = append(filtered, fmt.Sprintf("%s=%s", key, value))
-	}
-	return filtered
+	return internal.SanitizedEnv(overrides)
 }
