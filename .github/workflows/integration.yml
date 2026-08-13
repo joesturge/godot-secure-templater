@@ -32,6 +32,7 @@ jobs:
             binary_ext: .exe
             smoke_shell: bash
             sanitize_host_env: 'true'
+            expected_runtime: mingw
           - name: windows host -> windows target (pwsh smoke)
             runner: windows-latest
             goos: windows
@@ -40,6 +41,7 @@ jobs:
             binary_ext: .exe
             smoke_shell: pwsh
             sanitize_host_env: 'true'
+            expected_runtime: mingw
           - name: linux host -> linux target
             runner: ubuntu-latest
             goos: linux
@@ -48,6 +50,16 @@ jobs:
             binary_ext: ""
             smoke_shell: bash
             sanitize_host_env: 'false'
+            expected_runtime: zig
+          - name: linux host -> windows target
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            target_tuple: windows/amd64
+            binary_ext: ""
+            smoke_shell: bash
+            sanitize_host_env: 'true'
+            expected_runtime: mingw
 
     defaults:
       run:
@@ -76,10 +88,10 @@ jobs:
       - name: Run integration smoke test (bash matrix)
         if: ${{ matrix.smoke_shell == 'bash' }}
         run: |
-          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"
+          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}" "${{ matrix.expected_runtime }}"
 
       - name: Run integration smoke test (pwsh matrix)
         if: ${{ matrix.smoke_shell == 'pwsh' }}
         shell: pwsh
         run: |
-          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"
+          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}" "${{ matrix.expected_runtime }}"

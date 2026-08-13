@@ -345,10 +345,40 @@ func TestExtractTarXZ_BlocksDirectoryTraversal(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "extractTarXZ should never write files outside target directory")
 }
 
-func TestExtractTarXZ_IgnoresSymlinkEntries(t *testing.T) {
-	// GIVEN a tar.xz archive containing a symlink entry
+func TestExtractTarXZ_MaterializesSafeSymlinkEntries(t *testing.T) {
+	// GIVEN a tar.xz archive containing a relative symlink to a file inside the archive
 	tempDir := t.TempDir()
 	archivePath := filepath.Join(tempDir, "symlink.tar.xz")
+	targetDir := filepath.Join(tempDir, "extract")
+	symlinkPath := filepath.Join(targetDir, "link")
+	targetPath := filepath.Join(targetDir, "target")
+
+	err := os.MkdirAll(targetDir, 0755)
+	assert.NoError(t, err, "Target directory should be creatable")
+
+	err = writeTarXZ(archivePath, []tar.Header{
+		{Name: "target", Mode: 0600, Size: int64(len("compiler")), Typeflag: tar.TypeReg},
+		{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "target"},
+	}, [][]byte{[]byte("compiler"), {}})
+	assert.NoError(t, err, "Test tar.xz archive should be creatable")
+
+	// WHEN extracting the tar.xz archive
+	err = extractTarXZ(archivePath, targetDir)
+
+	// THEN safe symlink entries should be materialized
+	assert.NoError(t, err, "extractTarXZ should materialize safe symlink entries")
+	linkInfo, statErr := os.Lstat(symlinkPath)
+	assert.NoError(t, statErr, "Safe symlink should exist after extraction")
+	if linkInfo != nil {
+		assert.Equal(t, os.ModeSymlink, linkInfo.Mode()&os.ModeSymlink, "Safe archive link should remain a symlink")
+	}
+	assert.FileExists(t, targetPath, "Symlink target should exist after extraction")
+}
+
+func TestExtractTarXZ_IgnoresUnsafeSymlinkEntries(t *testing.T) {
+	// GIVEN a tar.xz archive containing a symlink that escapes the extraction root
+	tempDir := t.TempDir()
+	archivePath := filepath.Join(tempDir, "unsafe-symlink.tar.xz")
 	targetDir := filepath.Join(tempDir, "extract")
 	symlinkPath := filepath.Join(targetDir, "link")
 
@@ -363,10 +393,10 @@ func TestExtractTarXZ_IgnoresSymlinkEntries(t *testing.T) {
 	// WHEN extracting the tar.xz archive
 	err = extractTarXZ(archivePath, targetDir)
 
-	// THEN symlink entries should be ignored
-	assert.NoError(t, err, "extractTarXZ should ignore symlink entries without failing")
+	// THEN unsafe symlink entries should be ignored
+	assert.NoError(t, err, "extractTarXZ should ignore unsafe symlink entries without failing")
 	_, statErr := os.Lstat(symlinkPath)
-	assert.True(t, os.IsNotExist(statErr), "extractTarXZ should not materialize symlink entries")
+	assert.True(t, os.IsNotExist(statErr), "extractTarXZ should not materialize unsafe symlink entries")
 }
 
 func writeTarXZ(archivePath string, headers []tar.Header, bodies [][]byte) error {

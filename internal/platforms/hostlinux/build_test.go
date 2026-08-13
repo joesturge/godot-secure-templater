@@ -81,3 +81,22 @@ func TestZigCompilerEnvFailsWhenZigMissing(t *testing.T) {
 	assert.Equal(t, internal.ExitBuildFailed, gstErr.Code, "zigCompilerEnv should return ExitBuildFailed when zig is missing")
 }
 
+func TestWindowsCrossCompilerEnvUsesMinGWToolchain(t *testing.T) {
+	// GIVEN a provisioned Linux-hosted MinGW toolchain
+	runtimeDir := t.TempDir()
+	mingwDir := filepath.Join(runtimeDir, "mingw")
+	err := os.MkdirAll(filepath.Join(mingwDir, "bin"), 0755)
+	assert.NoError(t, err, "MinGW bin directory should be creatable")
+
+	workspace := &internal.Workspace{Runtime: runtimeDir}
+
+	// WHEN building the Windows cross-compilation environment
+	env, buildErr := buildEnvForProfile(workspace, "test-key", "windows/amd64")
+
+	// THEN it should select the provisioned MinGW prefix and target-prefixed tools
+	assert.Nil(t, buildErr, "Windows cross-compilation environment should succeed with MinGW")
+	assert.Equal(t, mingwDir, env["MINGW_PREFIX"], "Windows cross-compilation should expose the MinGW prefix to Godot")
+	assert.Equal(t, "x86_64-w64-mingw32-clang", env["CC"], "Windows cross-compilation should use the target-prefixed clang")
+	assert.Equal(t, "x86_64-w64-mingw32-clang++", env["CXX"], "Windows cross-compilation should use the target-prefixed clang++")
+	assert.Equal(t, "x86_64-w64-mingw32-ar", env["AR"], "Windows cross-compilation should use the target-prefixed archiver")
+}

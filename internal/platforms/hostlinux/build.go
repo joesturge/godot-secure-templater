@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
@@ -13,7 +14,7 @@ import (
 )
 
 func verifyCompileReadiness(ctx *internal.RunContext, profile targetprofiles.SConsTargetProfile) *internal.Error {
-	compilerEnv, err := zigCompilerEnv(ctx.Workspace.Runtime)
+	compilerEnv, err := zigCompilerEnvForTarget(ctx.Workspace.Runtime, profile.TargetTuple)
 	if err != nil {
 		return err
 	}
@@ -47,7 +48,7 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 			sconsArgs = append(sconsArgs, profile.ExtraSConsArgs...)
 		}
 
-		env, envErr := buildEnv(ctx.Workspace, key)
+		env, envErr := buildEnvForProfile(ctx.Workspace, key, profile.TargetTuple)
 		if envErr != nil {
 			return nil, envErr
 		}
@@ -60,9 +61,31 @@ func buildCommandForProfile(profile targetprofiles.SConsTargetProfile) func(ctx 
 }
 
 func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *internal.Error) {
+	return buildEnvForProfile(workspace, key, "linux/amd64")
+}
+
+func buildEnvForProfile(workspace *internal.Workspace, key string, targetTuple string) (map[string]string, *internal.Error) {
 	hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 	env := hostAdapter.BuildEnv(workspace, key)
-	compilerEnv, err := zigCompilerEnv(workspace.Runtime)
+	if strings.EqualFold(strings.TrimSpace(targetTuple), "windows/amd64") {
+		mingwPrefix, err := resolveBundledMingwPrefix(workspace.Runtime)
+		if err != nil {
+			return nil, &internal.Error{
+				Code:    internal.ExitBuildFailed,
+				Message: "Provisioned MinGW compiler not found",
+				Details: err.Error(),
+			}
+		}
+		mingwBin := filepath.Join(mingwPrefix, "bin")
+		env["MINGW_PREFIX"] = mingwPrefix
+		env["PATH"] = prependPosixPath(mingwBin, env["PATH"])
+		env["CC"] = "x86_64-w64-mingw32-clang"
+		env["CXX"] = "x86_64-w64-mingw32-clang++"
+		env["AR"] = "x86_64-w64-mingw32-ar"
+		return env, nil
+	}
+
+	compilerEnv, err := zigCompilerEnvForTarget(workspace.Runtime, targetTuple)
 	if err != nil {
 		return nil, err
 	}
@@ -72,11 +95,44 @@ func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *in
 	return env, nil
 }
 
-// zigCompilerEnv resolves the absolute path to the provisioned zig binary and returns
-// CC, CXX, and AR overrides that use it directly, so no PATH lookup is needed.
-// The path is double-quoted so that workspace paths containing spaces are handled
-// correctly by SCons when it parses the compiler command string.
-func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
+func prependPosixPath(entry string, existing string) string {
+	if existing == "" {
+		return entry
+	}
+	if strings.HasPrefix(existing, entry+string(os.PathListSeparator)) || existing == entry {
+		return existing
+	}
+	return entry + string(os.PathListSeparator) + existing
+}
+
+func resolveBundledMingwPrefix(runtimeDir string) (string, error) {
+	base := filepath.Join(runtimeDir, "mingw")
+	if hasBinDir(base) {
+		return base, nil
+	}
+
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return "", fmt.Errorf("mingw directory not found under %s: %w", base, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(base, entry.Name())
+		if hasBinDir(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no MinGW toolchain with a bin directory found under %s", base)
+}
+
+func hasBinDir(path string) bool {
+	info, err := os.Stat(filepath.Join(path, "bin"))
+	return err == nil && info.IsDir()
+}
+
+func zigCompilerEnvForTarget(runtimeDir string, targetTuple string) (map[string]string, *internal.Error) {
 	zigExe, err := sconsworkflow.ResolveZigExecutable(runtimeDir)
 	if err != nil {
 		return nil, &internal.Error{
@@ -86,11 +142,25 @@ func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
 		}
 	}
 	quoted := fmt.Sprintf("%q", zigExe)
+	compilerPrefix := quoted + " cc"
+	compilerCXXPrefix := quoted + " c++"
+	if strings.EqualFold(strings.TrimSpace(targetTuple), "windows/amd64") {
+		compilerPrefix += " -target x86_64-windows-gnu"
+		compilerCXXPrefix += " -target x86_64-windows-gnu"
+	}
 	return map[string]string{
-		"CC":  quoted + " cc",
-		"CXX": quoted + " c++",
+		"CC":  compilerPrefix,
+		"CXX": compilerCXXPrefix,
 		"AR":  quoted + " ar",
 	}, nil
+}
+
+// zigCompilerEnv resolves the absolute path to the provisioned zig binary and returns
+// CC, CXX, and AR overrides that use it directly, so no PATH lookup is needed.
+// The path is double-quoted so that workspace paths containing spaces are handled
+// correctly by SCons when it parses the compiler command string.
+func zigCompilerEnv(runtimeDir string) (map[string]string, *internal.Error) {
+	return zigCompilerEnvForTarget(runtimeDir, "linux/amd64")
 }
 
 func makeEnv(overrides map[string]string) []string {
@@ -107,4 +177,3 @@ func makeEnv(overrides map[string]string) []string {
 	}
 	return filtered
 }
-
