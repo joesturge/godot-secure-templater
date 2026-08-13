@@ -83,3 +83,21 @@ func TestLinuxPluginRegistersWindowsTargetDefinition(t *testing.T) {
 	assert.NotNil(t, def.Compile, "Linux platform should provide a compile callback for the Windows target")
 	assert.NotNil(t, def.Verify, "Linux platform should provide a verify callback for the Windows target")
 }
+
+func TestLinuxPluginWindowsTargetComponentsUseMinGW(t *testing.T) {
+	// GIVEN a registered Linux-host Windows-target definition
+	def, ok := platform.LookupHostTarget("linux/amd64", "windows/amd64")
+	assert.True(t, ok, "Linux Windows-target definition should exist for component tests")
+
+	// WHEN resolving the cross-compilation components
+	components, err := def.Components("4.7.0")
+
+	// THEN the Linux-host Windows-target path should provision MinGW rather than Zig
+	assert.Nil(t, err, "Windows cross-compilation component resolution should succeed")
+	names := map[string]bool{}
+	for _, component := range components {
+		names[component.Name] = true
+	}
+	assert.True(t, names["mingw"], "Windows cross-compilation should include a MinGW toolchain")
+	assert.False(t, names["zig"], "Windows cross-compilation should not rely on Zig")
+}

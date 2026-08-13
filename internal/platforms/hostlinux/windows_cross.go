@@ -8,7 +8,7 @@ import (
 )
 
 // windowsCrossComponents returns the toolchain components for building Windows
-// templates from a Linux host using the provisioned Zig toolchain.
+// templates from a Linux host using the provisioned MinGW toolchain.
 func windowsCrossComponents(version string) []internal.Artifact {
 	releaseTag := platformhelpers.GodotReleaseTagForVersion(version)
 	return []internal.Artifact{
@@ -20,10 +20,10 @@ func windowsCrossComponents(version string) []internal.Artifact {
 			Kind:      internal.ArchiveTarGZ,
 		},
 		{
-			Name:      "zig",
-			URL:       "https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz",
-			SHA256:    "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
-			ExtractTo: "zig",
+			Name:      "mingw",
+			URL:       "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-ubuntu-22.04-x86_64.tar.xz",
+			SHA256:    "534b92e067b22a6b4441f48ae9240a3341b17825d04d577eab0cf85c44b4deda",
+			ExtractTo: "mingw",
 			Kind:      internal.ArchiveTarXZ,
 		},
 		{

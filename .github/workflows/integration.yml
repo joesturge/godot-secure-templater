@@ -59,7 +59,7 @@ jobs:
             binary_ext: ""
             smoke_shell: bash
             sanitize_host_env: 'true'
-            expected_runtime: zig
+            expected_runtime: mingw
 
     defaults:
       run:

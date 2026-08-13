@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/joemi/godot-secure-templater/internal"
@@ -66,6 +67,24 @@ func buildEnv(workspace *internal.Workspace, key string) (map[string]string, *in
 func buildEnvForProfile(workspace *internal.Workspace, key string, targetTuple string) (map[string]string, *internal.Error) {
 	hostAdapter := sconsworkflow.AdapterForHostTuple(hostTuple)
 	env := hostAdapter.BuildEnv(workspace, key)
+	if strings.EqualFold(strings.TrimSpace(targetTuple), "windows/amd64") {
+		mingwPrefix, err := resolveBundledMingwPrefix(workspace.Runtime)
+		if err != nil {
+			return nil, &internal.Error{
+				Code:    internal.ExitBuildFailed,
+				Message: "Provisioned MinGW compiler not found",
+				Details: err.Error(),
+			}
+		}
+		mingwBin := filepath.Join(mingwPrefix, "bin")
+		env["MINGW_PREFIX"] = mingwPrefix
+		env["PATH"] = prependPosixPath(mingwBin, env["PATH"])
+		env["CC"] = "x86_64-w64-mingw32-clang"
+		env["CXX"] = "x86_64-w64-mingw32-clang++"
+		env["AR"] = "x86_64-w64-mingw32-ar"
+		return env, nil
+	}
+
 	compilerEnv, err := zigCompilerEnvForTarget(workspace.Runtime, targetTuple)
 	if err != nil {
 		return nil, err
@@ -74,6 +93,43 @@ func buildEnvForProfile(workspace *internal.Workspace, key string, targetTuple s
 		env[k] = v
 	}
 	return env, nil
+}
+
+func prependPosixPath(entry string, existing string) string {
+	if existing == "" {
+		return entry
+	}
+	if strings.HasPrefix(existing, entry+string(os.PathListSeparator)) || existing == entry {
+		return existing
+	}
+	return entry + string(os.PathListSeparator) + existing
+}
+
+func resolveBundledMingwPrefix(runtimeDir string) (string, error) {
+	base := filepath.Join(runtimeDir, "mingw")
+	if hasBinDir(base) {
+		return base, nil
+	}
+
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return "", fmt.Errorf("mingw directory not found under %s: %w", base, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(base, entry.Name())
+		if hasBinDir(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no MinGW toolchain with a bin directory found under %s", base)
+}
+
+func hasBinDir(path string) bool {
+	info, err := os.Stat(filepath.Join(path, "bin"))
+	return err == nil && info.IsDir()
 }
 
 func zigCompilerEnvForTarget(runtimeDir string, targetTuple string) (map[string]string, *internal.Error) {
