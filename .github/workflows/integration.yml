@@ -73,7 +73,13 @@ jobs:
           mkdir -p dist
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o "dist/gst${{ matrix.binary_ext }}" ./cmd/gst
 
-      - name: Run integration smoke test
-        shell: ${{ matrix.smoke_shell }}
+      - name: Run integration smoke test (bash matrix)
+        if: ${{ matrix.smoke_shell == 'bash' }}
+        run: |
+          bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"
+
+      - name: Run integration smoke test (pwsh matrix)
+        if: ${{ matrix.smoke_shell == 'pwsh' }}
+        shell: pwsh
         run: |
           bash .github/scripts/integration-smoke.sh "." "./dist/gst${{ matrix.binary_ext }}" "${{ github.event_name == 'workflow_dispatch' && inputs.godot_version || '4.7' }}" "${{ matrix.target_tuple }}" ".github/fixtures/integration-project" "${{ matrix.sanitize_host_env }}"
