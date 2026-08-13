@@ -21,7 +21,7 @@ func Components(version string) []internal.Artifact {
 		{
 			Name:      "zig",
 			URL:       "https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip",
-			SHA256:    "c3ae84ba7501e98feadb8ab4fb8555f08fc75ed1bbf0c0bfec9886d779259bb3",
+			SHA256:    "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e",
 			ExtractTo: "zig",
 			Kind:      internal.ArchiveZip,
 		},
