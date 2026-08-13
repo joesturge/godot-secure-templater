@@ -121,7 +121,9 @@ func Provision(ctx *internal.RunContext, components []internal.Artifact) *intern
 		// The Windows embedded zip ships a python*._pth file that disables PYTHONPATH; without
 		// patching it, subprocesses like em++.py cannot import sibling modules such as emcc.
 		if art.Name == "python" {
-			enableSiteForEmbeddedPython(targetDir)
+			if patchErr := enableSiteForEmbeddedPython(targetDir); patchErr != nil {
+				ctx.Logger.Warn("Failed to patch Python path config to enable PYTHONPATH: %v", patchErr)
+			}
 		}
 
 		ctx.Logger.Info("    ✓ Provisioned successfully")
@@ -583,10 +585,10 @@ func installSconsToEmbeddedPython(ctx *internal.RunContext, sconsDir string) *in
 // Without this, the embedded Python ignores PYTHONPATH entirely, causing em++.py to fail with
 // "ModuleNotFoundError: No module named 'emcc'" when SCons invokes it as a subprocess.
 // This is a no-op if no ._pth files exist (e.g. on POSIX hosts).
-func enableSiteForEmbeddedPython(pythonDir string) {
+func enableSiteForEmbeddedPython(pythonDir string) error {
 	matches, err := filepath.Glob(filepath.Join(pythonDir, "python*._pth"))
 	if err != nil || len(matches) == 0 {
-		return
+		return nil
 	}
 	for _, pthFile := range matches {
 		data, err := os.ReadFile(pthFile)
@@ -597,8 +599,11 @@ func enableSiteForEmbeddedPython(pythonDir string) {
 		if patched == string(data) {
 			continue
 		}
-		_ = os.WriteFile(pthFile, []byte(patched), 0644)
+		if writeErr := os.WriteFile(pthFile, []byte(patched), 0644); writeErr != nil {
+			return fmt.Errorf("failed to patch %s to enable PYTHONPATH: %w", pthFile, writeErr)
+		}
 	}
+	return nil
 }
 
 // provisionScript writes a script artifact directly to targetDir/<name> with 0755 permissions.
