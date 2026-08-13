@@ -127,7 +127,7 @@ jobs:
           }
 
           if (-not (Test-Path ".gst/runtime/python")) { throw "missing runtime python" }
-	      if (-not (Test-Path ".gst/runtime/mingw")) { throw "missing runtime mingw" }
+          if (-not (Test-Path ".gst/runtime/mingw")) { throw "missing runtime mingw" }
           if (-not (Test-Path ".gst/runtime/scons")) { throw "missing runtime scons" }
           if (-not (Test-Path ".gst/runtime/godot_source")) { throw "missing runtime godot_source" }
 
