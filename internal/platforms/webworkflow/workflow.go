@@ -86,13 +86,23 @@ func buildEnv(workspace *internal.Workspace, hostTuple string, key string) map[s
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(hostTuple)), "windows/") {
 		separator = ";"
 	}
+	emscriptenDir := filepath.Join(sdkRoot, "upstream", "emscripten")
 	paths := []string{
-		filepath.Join(sdkRoot, "upstream", "emscripten"),
+		emscriptenDir,
 		filepath.Join(sdkRoot, "upstream", "bin"),
 		filepath.Join(sdkRoot, "node", "20.18.0_64bit", "bin"),
 	}
 	env["PATH"] = strings.Join(append(paths, env["PATH"]), separator)
 	env["EM_CONFIG"] = filepath.Join(sdkRoot, ".emscripten")
+	// em++.py (and emcc.py) do `import emcc` — the emscripten directory must be on
+	// PYTHONPATH so Python can find the sibling modules regardless of how the subprocess
+	// is launched.
+	existingPythonPath := env["PYTHONPATH"]
+	if existingPythonPath != "" {
+		env["PYTHONPATH"] = emscriptenDir + separator + existingPythonPath
+	} else {
+		env["PYTHONPATH"] = emscriptenDir
+	}
 	return env
 }
 

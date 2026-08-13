@@ -50,7 +50,6 @@ Use one shared project key, distributed securely via your secret manager or CI.
 | Linux / POSIX           | Windows Desktop                       | Supported here           | Uses the provisioned MinGW/LLVM cross toolchain to build Windows templates from a Linux host.                                        |
 | Windows / Linux         | Web                                   | Supported here           | Uses the pinned Emscripten SDK and builds `wasm32` templates with threads disabled for broad browser compatibility.                  |
 | Windows / Linux / macOS | Android export templates              | Planned here             | Godot documents Android compilation on all three hosts with the Android SDK/NDK, but this repo does not implement it yet.           |
-| Windows / Linux / macOS | Web local serving / browser test loop | Planned here             | Godot's Web flow also expects a local web server for testing the generated output.                                                  |
 | Windows                 | Linux                                 | Not planned (yet)        | Godot's standard `linuxbsd` path is not a normal Windows-hosted build flow.                                                         |
 
 ---
